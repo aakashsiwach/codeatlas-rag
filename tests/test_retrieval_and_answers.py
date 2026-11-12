@@ -7,7 +7,7 @@ from codeatlas.answer import REFUSAL, count_uncited_sentences, extract_citations
 from codeatlas.atlas import CodeAtlas
 from codeatlas.embeddings import HashingEmbedder
 from codeatlas.models import Chunk, ScoredChunk
-from codeatlas.retrieval.retriever import TEST_INTENT, RetrievalConfig, _tests_last
+from codeatlas.retrieval.retriever import TEST_INTENT, RetrievalConfig, _outlines_after_methods, _tests_last
 
 
 def test_retrieval_config_parsing():
@@ -41,6 +41,22 @@ def test_test_code_is_ranked_last_unless_the_query_is_about_tests():
         "Owner.java", "Pet.java", "OwnerTests.java", "PetIT.java"
     ]
     assert TEST_INTENT.search("Which tests cover the duplicate pet check?")
+
+
+def test_class_outline_ranks_below_its_own_methods():
+    def sc(symbol: str, kind: str) -> ScoredChunk:
+        return ScoredChunk(Chunk(id=symbol, path="A.java", kind=kind, text="", embed_text="", start_line=1, end_line=2, symbol=symbol), 1.0, {})
+
+    ranked = [sc("x.Owner", "class"), sc("x.Pet", "class"), sc("x.Owner#addPet", "method"), sc("x.Vet#name", "method")]
+    ranked += [sc("x.Owner#getPet", "method"), sc("x.OwnerController#show", "method")]
+    assert [s.chunk.symbol for s in _outlines_after_methods(ranked)] == [
+        "x.Pet",  # no Pet method retrieved: stays where it was
+        "x.Owner#addPet",
+        "x.Vet#name",
+        "x.Owner#getPet",
+        "x.Owner",  # after its lowest-ranked method; x.OwnerController is a different class
+        "x.OwnerController#show",
+    ]
     assert TEST_INTENT.search("Is there a JUnit or Mockito setup?")
     assert not TEST_INTENT.search("What happens when a duplicate pet is added? Show the latest owner.")
 

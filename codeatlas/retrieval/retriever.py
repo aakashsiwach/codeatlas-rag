@@ -22,7 +22,7 @@ RRF_K = 60
 MODES = ("vector", "bm25", "hybrid")
 FLAGS = ("rewrite", "rerank", "graph")
 # Ranking options that can be overridden per run (`codeatlas eval -o name=value`); shown in config names.
-OPTIONS = ("candidates", "rerank_pool", "graph_depth", "demote_tests")
+OPTIONS = ("candidates", "rerank_pool", "graph_depth", "demote_tests", "outlines_after_methods")
 
 TEST_INTENT = re.compile(
     r"\b(tests?|testing|tested|test cases?|junit|mock(s|ed|ing|ito)?|asserts?|assertions?)\b", re.IGNORECASE
@@ -45,6 +45,7 @@ class RetrievalConfig:
     rerank_pool: int = 30
     graph_depth: int = 3
     demote_tests: bool = True  # rank test code below main code unless the query is about tests
+    outlines_after_methods: bool = True  # a class outline ranks below its own retrieved methods
 
     @staticmethod
     def parse_options(pairs: list[str]) -> dict[str, Any]:
@@ -200,6 +201,9 @@ class Retriever:
             if demote_tests:
                 scored = _tests_last(scored)
 
+        if cfg.outlines_after_methods:
+            scored = _outlines_after_methods(scored)
+
         results = scored[: cfg.k]
         report = None
         if cfg.graph and self.graph is not None:
@@ -278,6 +282,25 @@ def _tests_last(scored: list[ScoredChunk]) -> list[ScoredChunk]:
     return [sc for sc in scored if not is_test_path(sc.chunk.path)] + [
         sc for sc in scored if is_test_path(sc.chunk.path)
     ]
+
+
+def _outlines_after_methods(scored: list[ScoredChunk]) -> list[ScoredChunk]:
+    """Move each class-outline chunk to just after the lowest-ranked of its own method chunks in the list.
+
+    The outline only lists signatures; when a method of the same class was also retrieved, the method
+    holds the actual code. Outlines with none of their methods in the list keep their place.
+    """
+    out = list(scored)
+    for outline in [sc for sc in scored if sc.chunk.kind == "class" and sc.chunk.symbol]:
+        prefix = outline.chunk.symbol + "#"
+        pos = out.index(outline)
+        last = max(
+            (i for i, sc in enumerate(out) if sc.chunk.kind == "method" and (sc.chunk.symbol or "").startswith(prefix)),
+            default=-1,
+        )
+        if last > pos:
+            out.insert(last, out.pop(pos))  # after the pop, index `last` is just past that method
+    return out
 
 
 def _ms(start: float) -> float:

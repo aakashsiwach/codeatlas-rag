@@ -92,6 +92,12 @@ def test_evaluate_on_fixture(atlas):
     impact_item = next(r for r in graph.items if r.id == "customer-impact")
     assert impact_item.hit == 1.0
 
+    for spec in ("hybrid", "hybrid+graph"):  # a deeper cutoff adds a column but never changes top-k
+        deep = evaluate(atlas, items, RetrievalConfig.parse(spec, k=2), deep_k=5).summary()
+        shallow = evaluate(atlas, items, RetrievalConfig.parse(spec, k=2)).summary()
+        assert deep["recall@5"] >= deep["recall@2"] == shallow["recall@2"]
+        assert deep["mrr"] == shallow["mrr"] and "recall@5" not in shallow
+
     with_answers = evaluate(atlas, items, RetrievalConfig.parse("hybrid", k=5), with_answers=True)
     assert "refusal_accuracy" in with_answers.summary()
 

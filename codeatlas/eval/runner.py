@@ -5,7 +5,7 @@ from __future__ import annotations
 import statistics
 import subprocess
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -33,6 +33,7 @@ class ItemResult:
     retrieved: list[str]
     expected: list[str] = field(default_factory=list)
     recall: float | None = None
+    recall_deep: float | None = None  # recall at EvalReport.deep_k
     hit: float | None = None
     reciprocal_rank: float | None = None
     answer: str | None = None
@@ -52,6 +53,13 @@ class EvalReport:
     config: str
     k: int
     items: list[ItemResult] = field(default_factory=list)
+    deep_k: int | None = None  # a second, larger cutoff for recall (e.g. recall@10)
+
+    def _recall_columns(self, rows: list[ItemResult]) -> dict[str, Any]:
+        out: dict[str, Any] = {f"recall@{self.k}": _mean([r.recall for r in rows])}
+        if self.deep_k:
+            out[f"recall@{self.deep_k}"] = _mean([r.recall_deep for r in rows])
+        return out
 
     def summary(self) -> dict[str, Any]:
         answerable = [r for r in self.items if r.answerable]
@@ -60,7 +68,7 @@ class EvalReport:
             "config": self.config,
             "k": self.k,
             "questions": len(self.items),
-            f"recall@{self.k}": _mean([r.recall for r in answerable]),
+            **self._recall_columns(answerable),
             f"hit@{self.k}": _mean([r.hit for r in answerable]),
             "mrr": _mean([r.reciprocal_rank for r in answerable]),
             "p50_ms": round(percentile(latencies, 0.5), 1),
@@ -83,7 +91,7 @@ class EvalReport:
             rows = [r for r in self.items if r.answerable and r.category == category]
             out[category] = {
                 "questions": len(rows),
-                f"recall@{self.k}": _mean([r.recall for r in rows]),
+                **self._recall_columns(rows),
                 f"hit@{self.k}": _mean([r.hit for r in rows]),
                 "mrr": _mean([r.reciprocal_rank for r in rows]),
             }
@@ -109,8 +117,16 @@ def evaluate(
     *,
     with_answers: bool = False,
     judge: LLM | None = None,
+    deep_k: int | None = None,
 ) -> EvalReport:
-    report = EvalReport(config=cfg.name, k=cfg.k)
+    """Score one retrieval configuration. With deep_k, also report recall at that larger cutoff.
+
+    The deep cutoff never changes the top-k numbers: graph expansion depends on k, so graph configs
+    are retrieved a second time at deep_k; other configs rank identically and are retrieved once.
+    """
+    deep_k = deep_k if deep_k and deep_k > cfg.k else None
+    deep_cfg = replace(cfg, k=deep_k) if deep_k else None
+    report = EvalReport(config=cfg.name, k=cfg.k, deep_k=deep_k)
     if any(e.symbol and e.definitions is None for item in items for e in item.expected_sources):
         if atlas.repo_path is None:
             raise ValueError("Symbol-level expected sources need the indexed repository; index a repo first")
@@ -122,8 +138,15 @@ def evaluate(
             answer = atlas.engine.ask(item.question, cfg)
             chunks = [c for c in answer.context if c.kind != "graph"]
         else:
-            chunks = [sc.chunk for sc in atlas.retriever.retrieve(item.question, cfg).chunks]
+            run_cfg = deep_cfg if deep_cfg and not cfg.graph else cfg
+            chunks = [sc.chunk for sc in atlas.retriever.retrieve(item.question, run_cfg).chunks]
         latency = (time.perf_counter() - start) * 1000
+        deep_chunks = None
+        if deep_cfg:
+            if not with_answers and not cfg.graph:
+                deep_chunks = chunks
+            else:
+                deep_chunks = [sc.chunk for sc in atlas.retriever.retrieve(item.question, deep_cfg).chunks]
 
         result = ItemResult(
             id=item.id,
@@ -136,6 +159,8 @@ def evaluate(
         )
         if item.answerable and item.expected_sources:
             result.recall = recall_at_k(item.expected_sources, chunks, cfg.k)
+            if deep_chunks is not None and deep_k:
+                result.recall_deep = recall_at_k(item.expected_sources, deep_chunks, deep_k)
             result.hit = hit_at_k(item.expected_sources, chunks, cfg.k)
             result.reciprocal_rank = reciprocal_rank(item.expected_sources, chunks[: cfg.k])
         if answer is not None:

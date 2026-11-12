@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Sequence
 
 from qdrant_client import QdrantClient, models
@@ -36,12 +37,11 @@ class VectorStore:
             self.collection,
             vectors_config=models.VectorParams(size=self.dim, distance=models.Distance.COSINE),
         )
-        try:
+        with warnings.catch_warnings():  # embedded mode ignores payload indexes and warns about it
+            warnings.simplefilter("ignore")
             self.client.create_payload_index(
                 self.collection, field_name="path", field_schema=models.PayloadSchemaType.KEYWORD
             )
-        except Exception:  # noqa: BLE001 - embedded mode does not support payload indexes
-            pass
 
     def collection_dim(self) -> int | None:
         vectors = self.client.get_collection(self.collection).config.params.vectors

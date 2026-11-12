@@ -115,30 +115,33 @@ def evaluate_cmd(
     answers: bool = typer.Option(False, "--answers", help="Also generate answers and score them"),
     judge: bool = typer.Option(False, "--judge", help="Score faithfulness with an LLM judge (implies --answers)"),
     out: Path = typer.Option(Path("results"), help="Directory for JSON and Markdown results"),
+    weakest: int = typer.Option(5, help="Weakest questions to list per configuration"),
 ) -> None:
     """Compare retrieval configurations on an evaluation set."""
     from codeatlas.eval.dataset import load_eval_set
-    from codeatlas.eval.runner import evaluate, to_markdown
+    from codeatlas.eval.runner import category_markdown, evaluate, report_markdown, run_metadata, to_markdown
     from codeatlas.retrieval.retriever import RetrievalConfig
 
     atlas = _atlas(ctx)
     items = load_eval_set(eval_set)
+    with_answers = answers or judge
     judge_llm = atlas.llm if judge else None
     reports = []
     for spec in [c.strip() for c in configs.split(",") if c.strip()]:
         cfg = RetrievalConfig.parse(spec, k=k)
         typer.echo(f"evaluating {cfg.name} on {len(items)} questions...")
-        reports.append(evaluate(atlas, items, cfg, with_answers=answers or judge, judge=judge_llm))
+        reports.append(evaluate(atlas, items, cfg, with_answers=with_answers, judge=judge_llm))
 
-    table = to_markdown(reports)
-    typer.echo("\n" + table)
+    metadata = run_metadata(atlas, eval_set, items, with_answers=with_answers, judge=judge)
+    typer.echo("\n" + to_markdown(reports) + "\n\n" + category_markdown(reports))
     out.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    (out / f"eval-{stamp}.md").write_text(table + "\n", encoding="utf-8")
+    (out / f"eval-{stamp}.md").write_text(report_markdown(reports, metadata, weakest), encoding="utf-8")
     (out / f"eval-{stamp}.json").write_text(
-        json.dumps([r.to_dict() for r in reports], indent=2), encoding="utf-8"
+        json.dumps({"metadata": metadata, "reports": [r.to_dict() for r in reports]}, indent=2),
+        encoding="utf-8",
     )
-    typer.echo(f"\nresults written to {out}/eval-{stamp}.{{md,json}}")
+    typer.echo(f"\nfull report (run metadata, weakest questions) written to {out}/eval-{stamp}.{{md,json}}")
 
 
 @app.command()

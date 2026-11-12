@@ -135,32 +135,60 @@ upstream `main` @ `500158f`: flows and locations, endpoints, callers of endpoint
 change-impact and caller questions for the code graph, configuration, and 11 questions about things the
 codebase does not contain, which the system should refuse. Re-verify if you evaluate a different revision.
 
+The comparison is an ablation: each step changes one thing, so each row shows the gain from one technique.
+
 ```bash
-# Retrieval-only comparison (no LLM cost)
-codeatlas eval eval/petclinic.yaml -k 5 \
-  --configs vector,bm25,hybrid,hybrid+rerank,hybrid+rerank+graph
+# 0. Pin the inputs
+git -C repos/spring-petclinic checkout 500158f
 
-# Naive chunking baseline: build a second index and evaluate it the same way
+# 1. Baseline: fixed-size chunks + vector search (separate index)
 codeatlas --index-dir .codeatlas-naive index repos/spring-petclinic --chunker naive
-codeatlas --index-dir .codeatlas-naive eval eval/petclinic.yaml --configs vector,hybrid
+codeatlas --index-dir .codeatlas-naive eval eval/petclinic.yaml -k 5 --configs vector
 
-# End-to-end: refusal accuracy, citation precision, LLM-judged faithfulness
-codeatlas eval eval/petclinic.yaml --configs hybrid+rerank+graph --judge
+# 2-5. AST chunks, then add keyword search, the reranker and the code graph one at a time
+codeatlas index repos/spring-petclinic
+codeatlas eval eval/petclinic.yaml -k 5 --configs vector,hybrid,hybrid+rerank,hybrid+rerank+graph
+
+# 6. Answer quality, only for the best one or two setups (repeat 2-3 times; judge scores vary)
+codeatlas eval eval/petclinic.yaml -k 5 --configs hybrid+rerank+graph --judge
 ```
 
-Results are printed as a Markdown table and saved to `results/` as JSON (per-question detail) and Markdown.
+Retrieval metrics (recall@k, hit@k, MRR) do not call the LLM, so they are cheap and repeatable. The
+LLM-judged metrics are not.
+
+Each run prints the overall and per-category tables and writes a full report to `results/eval-<timestamp>.md`
+and `.json` containing:
+
+- **Run metadata:** CodeAtlas and PetClinic commits (flagged `-dirty` if modified), embedding model,
+  chunker, reranker, LLM and thresholds, chunk count, graph size, and the index build's files, tokens,
+  cost and duration.
+- **Overall table:** recall@k, hit@k, MRR, latency and, with `--answers`/`--judge`, refusal accuracy,
+  citation precision and faithfulness.
+- **Recall by category:** shows *where* a technique helps, for example the graph on the impact and
+  endpoint-caller questions.
+- **Weakest questions per setup:** expected vs. retrieved sources, for failure analysis.
 
 ### Results
 
-Run the commands above and paste the table here. These are measured numbers, not estimates.
+Fill this in from the reports above. These are measured numbers, not estimates.
 
-| Chunking | Config | recall@5 | hit@5 | MRR | faithfulness | refusal acc. | p50 latency |
-|---|---|---|---|---|---|---|---|
-| naive | vector | – | – | – | – | – | – |
-| AST | vector | – | – | – | – | – | – |
-| AST | hybrid | – | – | – | – | – | – |
-| AST | hybrid+rerank | – | – | – | – | – | – |
-| AST | hybrid+rerank+graph | – | – | – | – | – | – |
+**Run details:** PetClinic `500158f` · CodeAtlas `–` · embeddings `–` · reranker `–` · LLM `–` · k = 5 ·
+index build: `–` files, `–` chunks, `–` s, $`–`
+
+| # | Chunking | Retrieval | recall@5 | hit@5 | MRR | p50 latency |
+|---|---|---|---|---|---|---|
+| 1 | naive | vector | – | – | – | – |
+| 2 | AST | vector | – | – | – | – |
+| 3 | AST | + BM25 (hybrid) | – | – | – | – |
+| 4 | AST | + reranker | – | – | – | – |
+| 5 | AST | + code graph | – | – | – | – |
+
+**Recall@5 by category** (rows 2–5): paste the category table from the report.
+
+**Answer quality** (best setup, mean of runs): faithfulness `–` · citation precision `–` · refusal accuracy `–`
+
+**Failure analysis:** two or three concrete examples from the weakest-questions section, such as a question
+the graph answers that vector search misses.
 
 ## HTTP API
 

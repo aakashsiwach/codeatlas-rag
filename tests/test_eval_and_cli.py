@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from conftest import FIXTURE_EVAL
@@ -6,7 +7,7 @@ from typer.testing import CliRunner
 from codeatlas.cli import app
 from codeatlas.eval.dataset import ExpectedSource, load_eval_set
 from codeatlas.eval.metrics import citation_precision, hit_at_k, recall_at_k, reciprocal_rank
-from codeatlas.eval.runner import evaluate, to_markdown
+from codeatlas.eval.runner import category_markdown, evaluate, report_markdown, run_metadata, to_markdown
 from codeatlas.models import Chunk
 from codeatlas.retrieval.retriever import RetrievalConfig
 
@@ -64,6 +65,23 @@ def test_evaluate_on_fixture(atlas):
     table = to_markdown([hybrid, graph])
     assert "| hybrid |" in table and "| hybrid+graph |" in table
 
+    categories = graph.by_category()
+    assert set(categories) == {"locate", "endpoint", "impact"}  # unanswerable questions are excluded
+    assert categories["impact"]["questions"] == 1
+    weakest = graph.weakest(2)
+    assert len(weakest) == 2 and weakest[0].recall <= weakest[1].recall
+    assert weakest[0].expected
+
+    metadata = run_metadata(atlas, FIXTURE_EVAL, items)
+    assert metadata["questions"] == 4 and metadata["answerable"] == 3
+    assert metadata["embedder"] == "hashing-512" and metadata["chunker"] == "ast"
+    assert metadata["index_build"]["files"] > 0
+    assert "llm" not in metadata
+    report = report_markdown([hybrid, graph], metadata, weakest=2)
+    for heading in ("## Run", "## Overall", "## Recall@5 by category", "### hybrid+graph"):
+        assert heading in report
+    assert "| impact (1) |" in category_markdown([hybrid, graph])
+
 
 def test_cli_index_impact_and_search(tmp_path, repo, monkeypatch):
     monkeypatch.chdir(tmp_path)
@@ -84,3 +102,17 @@ def test_cli_index_impact_and_search(tmp_path, repo, monkeypatch):
     result = runner.invoke(app, ["--index-dir", index_dir, "ask", "PaymentService charge", "--mode", "bm25", "--sources-only"])
     assert result.exit_code == 0, result.output
     assert "PaymentService" in result.output
+
+    out = tmp_path / "results"
+    result = runner.invoke(
+        app,
+        ["--index-dir", index_dir, "eval", str(FIXTURE_EVAL), "--configs", "bm25,bm25+graph", "--out", str(out)],
+    )
+    assert result.exit_code == 0, result.output
+    assert "| bm25+graph |" in result.output
+    reports = list(out.glob("eval-*.md"))
+    assert len(reports) == 1
+    assert "## Recall@5 by category" in reports[0].read_text(encoding="utf-8")
+    data = json.loads(next(out.glob("eval-*.json")).read_text(encoding="utf-8"))
+    assert data["metadata"]["questions"] == 4
+    assert [r["summary"]["config"] for r in data["reports"]] == ["bm25", "bm25+graph"]

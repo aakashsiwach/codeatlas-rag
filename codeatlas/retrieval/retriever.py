@@ -22,7 +22,7 @@ RRF_K = 60
 MODES = ("vector", "bm25", "hybrid")
 FLAGS = ("rewrite", "rerank", "graph")
 # Ranking options that can be overridden per run (`codeatlas eval -o name=value`); shown in config names.
-OPTIONS = ("candidates", "rerank_pool", "graph_depth", "demote_tests", "outlines_after_methods")
+OPTIONS = ("candidates", "rerank_pool", "graph_depth", "demote_tests", "outlines_after_methods", "graph_slots")
 
 TEST_INTENT = re.compile(
     r"\b(tests?|testing|tested|test cases?|junit|mock(s|ed|ing|ito)?|asserts?|assertions?)\b", re.IGNORECASE
@@ -46,6 +46,7 @@ class RetrievalConfig:
     graph_depth: int = 3
     demote_tests: bool = True  # rank test code below main code unless the query is about tests
     outlines_after_methods: bool = True  # a class outline ranks below its own retrieved methods
+    graph_slots: int = 2  # impact/caller queries: top-5 places reserved for graph neighbours (0 = legacy)
 
     @staticmethod
     def parse_options(pairs: list[str]) -> dict[str, Any]:
@@ -232,6 +233,38 @@ class Retriever:
                 out.append(cid)
         return out
 
+    def _reserve_graph_slots(
+        self,
+        query: str,
+        results: list[ScoredChunk],
+        endpoint_nodes: list[str],
+        targets: list[str],
+        hits: list,
+        cfg: RetrievalConfig,
+    ) -> list[ScoredChunk]:
+        """Impact/caller queries: keep the top (5 - graph_slots) retrieved chunks, then give the next
+        graph_slots places to graph neighbours: endpoint callers/servers first, then dependents by depth
+        (methods before types). The symbols the query names are not neighbours; retrieval finds those."""
+        window = min(cfg.k, 5)
+        keep = max(0, window - cfg.graph_slots)
+        head = results[:keep]
+        seen = {sc.chunk.id for sc in head}
+        named = set(targets) - set(endpoint_nodes)
+        skip_tests = cfg.demote_tests and not TEST_INTENT.search(query)
+        dependents = [h.node for h in sorted(hits, key=lambda h: (h.depth, h.kind != "method"))]
+        neighbours: list[ScoredChunk] = []
+        score = head[-1].score if head else (results[0].score if results else 1.0)
+        for node in dict.fromkeys(endpoint_nodes + dependents):
+            if len(neighbours) >= cfg.graph_slots:
+                break
+            chunk = self.first_chunk(node)
+            if chunk is None or chunk.id in seen or node in named or (skip_tests and is_test_path(chunk.path)):
+                continue
+            neighbours.append(ScoredChunk(chunk, score, {"graph": node}))
+            seen.add(chunk.id)
+        rest = [sc for sc in results[keep:] if sc.chunk.id not in seen]
+        return (head + neighbours + rest)[: cfg.k]
+
     def _graph_expand(
         self, query: str, results: list[ScoredChunk], cfg: RetrievalConfig
     ) -> tuple[list[ScoredChunk], str | None]:
@@ -245,6 +278,8 @@ class Retriever:
             if targets:
                 hits = graph.impact(targets, depth=cfg.graph_depth)
                 report = graph.describe(targets, hits, paths, roles)
+                if cfg.graph_slots > 0:
+                    return self._reserve_graph_slots(query, results, endpoint_nodes, targets, hits, cfg), report
                 ordered = targets + [h.node for h in sorted(hits, key=lambda h: h.depth)]
                 top_score = results[0].score if results else 1.0
                 merged: list[ScoredChunk] = []

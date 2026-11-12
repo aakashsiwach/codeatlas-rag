@@ -74,8 +74,13 @@ def test_graph_mode_answers_impact_questions(atlas):
     rr = atlas.retrieve("What breaks if I change the Customer entity?", mode="hybrid+graph", k=8)
     assert rr.confidence_source == "graph"
     assert "PaymentService#charge" in rr.graph_report
-    assert rr.chunks[0].chunk.symbol == "com.example.shop.customer.Customer"
+    assert rr.chunks[0].chunk.path.endswith("customer/Customer.java")  # retrieval finds the named entity
     assert len(rr.chunks) <= 8
+
+    legacy = atlas.retriever.retrieve(
+        "What breaks if I change the Customer entity?", RetrievalConfig.parse("hybrid+graph", k=8, graph_slots=0)
+    )
+    assert legacy.chunks[0].chunk.symbol == "com.example.shop.customer.Customer"  # graph nodes first
 
 
 def test_graph_mode_finds_endpoint_callers(atlas):
@@ -85,6 +90,23 @@ def test_graph_mode_finds_endpoint_callers(atlas):
     assert "OrderLookupClient#fetchOrder" in report
     assert "ReportingService#describeOrder" in report
     assert "InvoiceJob#syncInvoices" in report
+
+
+def test_graph_slots_reserve_top_five_places_for_neighbours(atlas):
+    cfg = RetrievalConfig.parse("hybrid+graph", k=8, graph_slots=2)
+    plain = atlas.retriever.retrieve("What breaks if I change the Customer entity?", RetrievalConfig.parse("hybrid", k=8))
+    rr = atlas.retriever.retrieve("What breaks if I change the Customer entity?", cfg)
+    assert rr.graph_report and len(rr.chunks) <= 8
+    assert [sc.chunk.id for sc in rr.chunks[:3]] == [sc.chunk.id for sc in plain.chunks[:3]]  # retrieval keeps 3
+    slots = rr.chunks[3:5]
+    assert all("graph" in sc.signals for sc in slots)
+    assert all(sc.signals["graph"] != "com.example.shop.customer.Customer" for sc in slots)  # named symbol is not a neighbour
+    assert len({sc.chunk.id for sc in rr.chunks}) == len(rr.chunks)
+
+    # Neighbours already retrieved are not repeated; a free slot falls back to the next retrieved chunk.
+    callers = atlas.retriever.retrieve("Which services call the /orders/{id} endpoint?", cfg)
+    top5 = {(sc.chunk.symbol or "").rsplit(".", 1)[-1] for sc in callers.chunks[:5]}
+    assert {"OrderController#getOrder", "ReportingService#describeOrder", "InvoiceJob#syncInvoices"} <= top5
 
 
 def test_answer_validates_citations_and_traces(atlas, fake_llm, settings):

@@ -1,6 +1,7 @@
 # Starter evaluation set for spring-projects/spring-petclinic (main branch).
 # Paths are suffixes relative to src/main/java/org/springframework/samples/petclinic/.
-# Verify each expected source against your checkout, then grow this to 50-100 questions.
+# Expected sources verified against spring-petclinic main @ 500158f (2026-09-29).
+# Re-check them if you evaluate a different revision; grow this to 50-100 questions.
 # Format: "path/File.java" or "path/File.java::Class.method".
 
 questions:
@@ -9,6 +10,7 @@ questions:
     category: flow
     expected_sources:
       - owner/OwnerController.java::OwnerController.processFindForm
+      - owner/OwnerController.java::OwnerController.findPaginatedForOwnersLastName
       - owner/OwnerRepository.java
 
   - id: owner-create-validation
@@ -40,6 +42,7 @@ questions:
     category: locate
     expected_sources:
       - owner/PetTypeFormatter.java::PetTypeFormatter.parse
+      - owner/PetTypeRepository.java
 
   - id: add-pet
     question: How is a new pet added to an owner?
@@ -73,6 +76,7 @@ questions:
     category: flow
     expected_sources:
       - vet/VetController.java::VetController.showVetList
+      - vet/VetController.java::VetController.findPaginated
 
   - id: vet-specialties
     question: How are vet specialties modelled?
@@ -101,6 +105,7 @@ questions:
     expected_sources:
       - owner/OwnerController.java
       - owner/PetController.java
+      - owner/VisitController.java
       - owner/OwnerRepository.java
 
   - id: pet-impact

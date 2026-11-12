@@ -130,8 +130,10 @@ questions:
     answerable: false          # the system should refuse
 ```
 
-`eval/petclinic.yaml` is a 20-question starter set for Spring PetClinic. Verify it against your checkout and
-grow it to 50–100 questions.
+`eval/petclinic.yaml` has 64 questions for Spring PetClinic, with every expected source verified against
+upstream `main` @ `500158f`: flows and locations, endpoints, callers of endpoints (`redirect:` URLs),
+change-impact and caller questions for the code graph, configuration, and 11 questions about things the
+codebase does not contain, which the system should refuse. Re-verify if you evaluate a different revision.
 
 ```bash
 # Retrieval-only comparison (no LLM cost)

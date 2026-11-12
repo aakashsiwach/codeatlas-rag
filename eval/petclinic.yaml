@@ -1,10 +1,18 @@
-# Starter evaluation set for spring-projects/spring-petclinic (main branch).
-# Paths are suffixes relative to src/main/java/org/springframework/samples/petclinic/.
+# Evaluation set for spring-projects/spring-petclinic (main branch).
 # Expected sources verified against spring-petclinic main @ 500158f (2026-09-29).
-# Re-check them if you evaluate a different revision; grow this to 50-100 questions.
-# Format: "path/File.java" or "path/File.java::Class.method".
+# Re-check them if you evaluate a different revision.
+#
+# Expected sources are path suffixes, optionally with a symbol: "path/File.java" or
+# "path/File.java::Class.method". Java paths are relative to
+# src/main/java/org/springframework/samples/petclinic/; resource paths are suffixes such as
+# "resources/application.properties" or "db/h2/schema.sql". HTML templates are not indexed,
+# so they are never expected sources.
+#
+# Categories: flow, locate, endpoint, endpoint-callers, impact, config, model, unanswerable.
 
 questions:
+  # --- flows and locations -------------------------------------------------------------------
+
   - id: owner-search
     question: How does searching for owners by last name work?
     category: flow
@@ -19,6 +27,124 @@ questions:
     expected_sources:
       - owner/OwnerController.java::OwnerController.processCreationForm
 
+  - id: owner-search-single-result
+    question: What happens when an owner search matches exactly one owner?
+    category: flow
+    expected_sources:
+      - owner/OwnerController.java::OwnerController.processFindForm
+
+  - id: owner-search-page-size
+    question: How many owners are shown per page in the search results?
+    category: locate
+    expected_sources:
+      - owner/OwnerController.java::OwnerController.findPaginatedForOwnersLastName
+
+  - id: owner-search-out-of-range-page
+    question: What does the owner search do when the requested page number is out of range?
+    category: flow
+    expected_sources:
+      - owner/OwnerController.java::OwnerController.processFindForm
+
+  - id: owner-not-found
+    question: What error is raised when an owner id does not exist?
+    category: flow
+    expected_sources:
+      - owner/OwnerController.java::OwnerController.findOwner
+      - owner/OwnerController.java::OwnerController.showOwner
+
+  - id: pet-validation
+    question: Where are pets validated and what rules apply?
+    category: locate
+    expected_sources:
+      - owner/PetValidator.java::PetValidator.validate
+
+  - id: pet-validator-registration
+    question: How is PetValidator wired into the pet form?
+    category: locate
+    expected_sources:
+      - owner/PetController.java::PetController.initPetBinder
+
+  - id: pet-type-conversion
+    question: How is a pet type string from the form converted into a PetType object?
+    category: locate
+    expected_sources:
+      - owner/PetTypeFormatter.java::PetTypeFormatter.parse
+      - owner/PetTypeRepository.java
+
+  - id: pet-type-dropdown
+    question: Where do the pet type options in the pet form come from?
+    category: locate
+    expected_sources:
+      - owner/PetController.java::PetController.populatePetTypes
+      - owner/PetTypeRepository.java
+
+  - id: add-pet
+    question: How is a new pet added to an owner?
+    category: flow
+    expected_sources:
+      - owner/PetController.java::PetController.processCreationForm
+      - owner/Owner.java::Owner.addPet
+
+  - id: duplicate-pet-name
+    question: How does the application prevent an owner from having two pets with the same name?
+    category: flow
+    expected_sources:
+      - owner/PetController.java::PetController.processCreationForm
+      - owner/PetController.java::PetController.isDuplicatePetNameViolation
+      - db/h2/schema.sql
+
+  - id: pet-birth-date-future
+    question: Can a pet be saved with a birth date in the future?
+    category: flow
+    expected_sources:
+      - owner/PetController.java::PetController.processCreationForm
+      - owner/PetController.java::PetController.processUpdateForm
+
+  - id: edit-pet
+    question: How are an existing pet's details updated?
+    category: flow
+    expected_sources:
+      - owner/PetController.java::PetController.processUpdateForm
+      - owner/PetController.java::PetController.updatePetDetails
+
+  - id: visit-booking
+    question: How do I book a new visit for a pet?
+    category: flow
+    expected_sources:
+      - owner/VisitController.java::VisitController.processNewVisitForm
+      - owner/VisitController.java::VisitController.loadPetWithVisit
+
+  - id: visit-date-rule
+    question: What date rule applies when booking a visit?
+    category: flow
+    expected_sources:
+      - owner/VisitController.java::VisitController.processNewVisitForm
+      - owner/VisitController.java::VisitController.minVisitDate
+
+  - id: id-binding-protection
+    question: How does the application stop users from setting entity ids through form fields?
+    category: locate
+    expected_sources:
+      - owner/OwnerController.java::OwnerController.setAllowedFields
+      - owner/PetController.java::PetController.initOwnerBinder
+      - owner/PetController.java::PetController.initPetBinder
+      - owner/VisitController.java::VisitController.setAllowedFields
+
+  - id: telephone-validation
+    question: What format must an owner's telephone number have?
+    category: locate
+    expected_sources:
+      - owner/Owner.java
+      - messages/messages.properties
+
+  - id: error-demo
+    question: How does the application demonstrate error handling?
+    category: locate
+    expected_sources:
+      - system/CrashController.java::CrashController.triggerException
+
+  # --- endpoints -----------------------------------------------------------------------------
+
   - id: owner-update-endpoint
     question: Which endpoint updates an existing owner and where is it handled?
     category: endpoint
@@ -31,45 +157,12 @@ questions:
     expected_sources:
       - owner/OwnerController.java::OwnerController.showOwner
 
-  - id: pet-validation
-    question: Where are pets validated and what rules apply?
-    category: locate
-    expected_sources:
-      - owner/PetValidator.java::PetValidator.validate
-
-  - id: pet-type-conversion
-    question: How is a pet type string from the form converted into a PetType object?
-    category: locate
-    expected_sources:
-      - owner/PetTypeFormatter.java::PetTypeFormatter.parse
-      - owner/PetTypeRepository.java
-
-  - id: add-pet
-    question: How is a new pet added to an owner?
-    category: flow
-    expected_sources:
-      - owner/PetController.java::PetController.processCreationForm
-      - owner/Owner.java::Owner.addPet
-
-  - id: visit-booking
-    question: How do I book a new visit for a pet?
-    category: flow
-    expected_sources:
-      - owner/VisitController.java::VisitController.processNewVisitForm
-      - owner/VisitController.java::VisitController.loadPetWithVisit
-
-  - id: vets-cache
-    question: Is the vet list cached? Where is the cache configured?
-    category: config
-    expected_sources:
-      - vet/VetRepository.java
-      - system/CacheConfiguration.java
-
   - id: vets-json
     question: Which endpoint returns the list of vets as JSON or XML?
     category: endpoint
     expected_sources:
       - vet/VetController.java::VetController.showResourcesVetList
+      - vet/Vets.java
 
   - id: vets-pagination
     question: How is the vet list paginated?
@@ -78,26 +171,70 @@ questions:
       - vet/VetController.java::VetController.showVetList
       - vet/VetController.java::VetController.findPaginated
 
-  - id: vet-specialties
-    question: How are vet specialties modelled?
-    category: model
+  - id: welcome
+    question: Which controller serves the home page?
+    category: endpoint
     expected_sources:
-      - vet/Vet.java
-      - vet/Specialty.java
+      - system/WelcomeController.java
 
-  - id: entity-base
-    question: What base classes do the JPA entities share?
-    category: model
-    expected_sources:
-      - model/BaseEntity.java
-      - model/NamedEntity.java
-      - model/Person.java
-
-  - id: error-demo
-    question: How does the application demonstrate error handling?
-    category: locate
+  - id: oups-endpoint
+    question: What does the /oups endpoint do?
+    category: endpoint
     expected_sources:
       - system/CrashController.java::CrashController.triggerException
+
+  - id: new-pet-endpoint
+    question: Which method handles POST /owners/{ownerId}/pets/new?
+    category: endpoint
+    expected_sources:
+      - owner/PetController.java::PetController.processCreationForm
+
+  - id: edit-pet-endpoint
+    question: Which methods handle /owners/{ownerId}/pets/{petId}/edit?
+    category: endpoint
+    expected_sources:
+      - owner/PetController.java::PetController.initUpdateForm
+      - owner/PetController.java::PetController.processUpdateForm
+
+  - id: new-visit-endpoint
+    question: Which methods handle /owners/{ownerId}/pets/{petId}/visits/new?
+    category: endpoint
+    expected_sources:
+      - owner/VisitController.java::VisitController.initNewVisitForm
+      - owner/VisitController.java::VisitController.processNewVisitForm
+
+  # --- callers of endpoints (redirect: string literals) --------------------------------------
+
+  - id: redirects-to-owner-details
+    question: Which handlers redirect to the /owners/{ownerId} page after they finish?
+    category: endpoint-callers
+    expected_sources:
+      - owner/OwnerController.java::OwnerController.processCreationForm
+      - owner/OwnerController.java::OwnerController.processFindForm
+      - owner/OwnerController.java::OwnerController.processUpdateOwnerForm
+      - owner/PetController.java::PetController.processCreationForm
+      - owner/PetController.java::PetController.processUpdateForm
+      - owner/VisitController.java::VisitController.processNewVisitForm
+
+  - id: redirects-to-owner-edit
+    question: Which handler redirects back to /owners/{ownerId}/edit?
+    category: endpoint-callers
+    expected_sources:
+      - owner/OwnerController.java::OwnerController.processUpdateOwnerForm
+
+  - id: redirects-to-vets-page
+    question: Who redirects to /vets.html and why?
+    category: endpoint-callers
+    expected_sources:
+      - vet/VetController.java::VetController.showVetList
+
+  - id: redirects-to-owner-list
+    question: Which code redirects to /owners, and in what situation?
+    category: endpoint-callers
+    expected_sources:
+      - owner/OwnerController.java::OwnerController.processFindForm
+
+  # --- impact and callers (code graph) -------------------------------------------------------
 
   - id: owner-impact
     question: What breaks if I change the Owner entity?
@@ -115,11 +252,140 @@ questions:
       - owner/PetController.java
       - owner/VisitController.java
 
-  - id: welcome
-    question: Which controller serves the home page?
-    category: endpoint
+  - id: pettype-impact
+    question: What depends on the PetType class?
+    category: impact
     expected_sources:
-      - system/WelcomeController.java
+      - owner/Pet.java
+      - owner/PetTypeFormatter.java
+      - owner/PetTypeRepository.java
+      - owner/PetController.java::PetController.populatePetTypes
+
+  - id: visit-impact
+    question: What would be affected by changing the Visit entity?
+    category: impact
+    expected_sources:
+      - owner/Pet.java::Pet.addVisit
+      - owner/Owner.java::Owner.addVisit
+      - owner/VisitController.java
+
+  - id: vetrepository-impact
+    question: What breaks if I change VetRepository?
+    category: impact
+    expected_sources:
+      - vet/VetController.java
+
+  - id: petvalidator-impact
+    question: Who uses PetValidator?
+    category: impact
+    expected_sources:
+      - owner/PetController.java::PetController.initPetBinder
+
+  - id: baseentity-impact
+    question: Which classes depend on BaseEntity?
+    category: impact
+    expected_sources:
+      - model/NamedEntity.java
+      - model/Person.java
+      - owner/Visit.java
+      - PetClinicRuntimeHints.java
+
+  - id: specialty-impact
+    question: What depends on the Specialty entity?
+    category: impact
+    expected_sources:
+      - vet/Vet.java
+
+  - id: addpet-callers
+    question: Who calls Owner.addPet?
+    category: impact
+    expected_sources:
+      - owner/PetController.java::PetController.initCreationForm
+      - owner/PetController.java::PetController.processCreationForm
+      - owner/PetController.java::PetController.updatePetDetails
+
+  - id: addvisit-callers
+    question: Who calls Owner.addVisit?
+    category: impact
+    expected_sources:
+      - owner/VisitController.java::VisitController.processNewVisitForm
+
+  - id: pet-addvisit-callers
+    question: Which methods call Pet.addVisit?
+    category: impact
+    expected_sources:
+      - owner/Owner.java::Owner.addVisit
+      - owner/VisitController.java::VisitController.loadPetWithVisit
+
+  - id: lastname-query-callers
+    question: Who calls OwnerRepository.findByLastNameStartingWith?
+    category: impact
+    expected_sources:
+      - owner/OwnerController.java::OwnerController.findPaginatedForOwnersLastName
+
+  - id: updatepetdetails-callers
+    question: Who calls PetController.updatePetDetails?
+    category: impact
+    expected_sources:
+      - owner/PetController.java::PetController.processUpdateForm
+
+  # --- configuration and model ---------------------------------------------------------------
+
+  - id: vets-cache
+    question: Is the vet list cached? Where is the cache configured?
+    category: config
+    expected_sources:
+      - vet/VetRepository.java
+      - system/CacheConfiguration.java
+
+  - id: default-database
+    question: Which database does the application use by default, and how is the schema loaded?
+    category: config
+    expected_sources:
+      - resources/application.properties
+
+  - id: mysql-config
+    question: How do I configure the application to use MySQL?
+    category: config
+    expected_sources:
+      - resources/application-mysql.properties
+
+  - id: language-switch
+    question: How does a user switch the application's language?
+    category: config
+    expected_sources:
+      - system/WebConfiguration.java::WebConfiguration.localeChangeInterceptor
+      - system/WebConfiguration.java::WebConfiguration.localeResolver
+
+  - id: native-image-hints
+    question: How is the application prepared for GraalVM native images?
+    category: config
+    expected_sources:
+      - PetClinicRuntimeHints.java::PetClinicRuntimeHints.registerHints
+
+  - id: vet-specialties
+    question: How are vet specialties modelled?
+    category: model
+    expected_sources:
+      - vet/Vet.java
+      - vet/Specialty.java
+
+  - id: entity-base
+    question: What base classes do the JPA entities share?
+    category: model
+    expected_sources:
+      - model/BaseEntity.java
+      - model/NamedEntity.java
+      - model/Person.java
+
+  - id: pet-ordering
+    question: In what order are an owner's pets and a pet's visits returned?
+    category: model
+    expected_sources:
+      - owner/Owner.java
+      - owner/Pet.java
+
+  # --- should refuse (verified absent from src/main) -----------------------------------------
 
   - id: no-kafka
     question: How are Kafka consumer offsets committed?
@@ -133,5 +399,45 @@ questions:
 
   - id: no-oauth
     question: How does the OAuth2 login flow refresh tokens?
+    category: unanswerable
+    answerable: false
+
+  - id: no-security-roles
+    question: Which Spring Security roles can edit owners?
+    category: unanswerable
+    answerable: false
+
+  - id: no-email
+    question: How are appointment reminder emails sent to owners?
+    category: unanswerable
+    answerable: false
+
+  - id: no-redis
+    question: How is the Redis session store configured?
+    category: unanswerable
+    answerable: false
+
+  - id: no-rate-limit
+    question: How is rate limiting applied to the vets API?
+    category: unanswerable
+    answerable: false
+
+  - id: no-scheduled
+    question: Which scheduled job cleans up old visits?
+    category: unanswerable
+    answerable: false
+
+  - id: no-delete-owner
+    question: Which endpoint deletes an owner?
+    category: unanswerable
+    answerable: false
+
+  - id: no-payments
+    question: How are vet visit payments processed?
+    category: unanswerable
+    answerable: false
+
+  - id: no-flyway
+    question: Where are the Flyway migration scripts?
     category: unanswerable
     answerable: false

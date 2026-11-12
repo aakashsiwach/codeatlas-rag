@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from conftest import FIXTURE_EVAL
 from typer.testing import CliRunner
 
@@ -33,6 +35,14 @@ def test_retrieval_metrics():
     assert reciprocal_rank(expected, retrieved) == 0.5
     assert citation_precision(expected, retrieved) == 1 / 3
     assert citation_precision(expected, []) is None
+
+
+def test_petclinic_eval_set_is_well_formed():
+    items = load_eval_set(Path(__file__).parents[1] / "eval" / "petclinic.yaml")
+    assert len(items) >= 50
+    assert len({i.id for i in items}) == len(items)
+    for item in items:
+        assert bool(item.expected_sources) == item.answerable, item.id
 
 
 def test_evaluate_on_fixture(atlas):

@@ -17,15 +17,18 @@ WEBHOOK_SECRET = "s3cret"
 class FakeLLM:
     name = "fake"
 
-    def __init__(self, reply: str):
+    def __init__(self, reply: str, stop_reason: str = "end_turn"):
         self.reply = reply
+        self.stop_reason = stop_reason
         self.calls = 0
         self.prompts: list[str] = []
+        self.thinking: list[str | None] = []
 
-    def complete(self, system, prompt, max_tokens):
+    def complete(self, system, prompt, max_tokens, thinking=None):
         self.calls += 1
         self.prompts.append(prompt)
-        return LLMResponse(self.reply, LLMUsage(100, 20))
+        self.thinking.append(thinking)
+        return LLMResponse(self.reply, LLMUsage(100, 20), self.stop_reason)
 
     def stream(self, system, prompt, max_tokens):
         self.calls += 1

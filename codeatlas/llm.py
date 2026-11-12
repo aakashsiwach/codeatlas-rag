@@ -23,12 +23,15 @@ class LLMUsage:
 class LLMResponse:
     text: str
     usage: LLMUsage
+    stop_reason: str | None = None  # normalised: "end_turn", "max_tokens", or the provider's value
 
 
 class LLM(Protocol):
     name: str
 
-    def complete(self, system: str, prompt: str, max_tokens: int) -> LLMResponse: ...
+    def complete(self, system: str, prompt: str, max_tokens: int, thinking: str | None = None) -> LLMResponse:
+        """thinking: None keeps the model's default; otherwise sent as the thinking type (e.g. "disabled")."""
+        ...
 
     def stream(self, system: str, prompt: str, max_tokens: int) -> Iterator[str | LLMUsage]:
         """Yield text deltas, then a final LLMUsage."""
@@ -45,15 +48,17 @@ class AnthropicLLM:
         self.model = model
         self.name = f"anthropic:{model}"
 
-    def complete(self, system: str, prompt: str, max_tokens: int) -> LLMResponse:
+    def complete(self, system: str, prompt: str, max_tokens: int, thinking: str | None = None) -> LLMResponse:
+        extra = {"thinking": {"type": thinking}} if thinking else {}
         msg = self._client.messages.create(
             model=self.model,
             max_tokens=max_tokens,
             system=system,
             messages=[{"role": "user", "content": prompt}],
+            **extra,
         )
         text = "".join(block.text for block in msg.content if block.type == "text")
-        return LLMResponse(text, LLMUsage(msg.usage.input_tokens, msg.usage.output_tokens))
+        return LLMResponse(text, LLMUsage(msg.usage.input_tokens, msg.usage.output_tokens), msg.stop_reason)
 
     def stream(self, system: str, prompt: str, max_tokens: int) -> Iterator[str | LLMUsage]:
         with self._client.messages.stream(
@@ -81,12 +86,15 @@ class OpenAILLM:
     def _messages(system: str, prompt: str) -> list[dict[str, str]]:
         return [{"role": "system", "content": system}, {"role": "user", "content": prompt}]
 
-    def complete(self, system: str, prompt: str, max_tokens: int) -> LLMResponse:
+    def complete(self, system: str, prompt: str, max_tokens: int, thinking: str | None = None) -> LLMResponse:
+        # thinking is not part of the OpenAI-compatible chat API; it is ignored here.
         resp = self._client.chat.completions.create(model=self.model, messages=self._messages(system, prompt))
         usage = resp.usage
+        finish = resp.choices[0].finish_reason
         return LLMResponse(
             resp.choices[0].message.content or "",
             LLMUsage(usage.prompt_tokens if usage else 0, usage.completion_tokens if usage else 0),
+            {"length": "max_tokens", "stop": "end_turn"}.get(finish, finish),
         )
 
     def stream(self, system: str, prompt: str, max_tokens: int) -> Iterator[str | LLMUsage]:
@@ -117,19 +125,24 @@ class BedrockLLM:
         self.model = model
         self.name = f"bedrock:{model}"
 
-    def _request(self, system: str, prompt: str, max_tokens: int) -> dict:
-        return {
+    def _request(self, system: str, prompt: str, max_tokens: int, thinking: str | None = None) -> dict:
+        request = {
             "modelId": self.model,
             "system": [{"text": system}],
             "messages": [{"role": "user", "content": [{"text": prompt}]}],
             "inferenceConfig": {"maxTokens": max_tokens},
         }
+        if thinking:  # model-specific request fields pass through Converse unchanged
+            request["additionalModelRequestFields"] = {"thinking": {"type": thinking}}
+        return request
 
-    def complete(self, system: str, prompt: str, max_tokens: int) -> LLMResponse:
-        resp = self._client.converse(**self._request(system, prompt, max_tokens))
+    def complete(self, system: str, prompt: str, max_tokens: int, thinking: str | None = None) -> LLMResponse:
+        resp = self._client.converse(**self._request(system, prompt, max_tokens, thinking))
         text = "".join(part.get("text", "") for part in resp["output"]["message"]["content"])
         usage = resp.get("usage", {})
-        return LLMResponse(text, LLMUsage(usage.get("inputTokens", 0), usage.get("outputTokens", 0)))
+        return LLMResponse(
+            text, LLMUsage(usage.get("inputTokens", 0), usage.get("outputTokens", 0)), resp.get("stopReason")
+        )
 
     def stream(self, system: str, prompt: str, max_tokens: int) -> Iterator[str | LLMUsage]:
         resp = self._client.converse_stream(**self._request(system, prompt, max_tokens))

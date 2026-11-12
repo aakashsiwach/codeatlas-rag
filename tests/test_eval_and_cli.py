@@ -2,11 +2,12 @@ import json
 from pathlib import Path
 
 import pytest
-from conftest import FIXTURE_EVAL, FIXTURE_REPO, JAVA_ROOT
+from conftest import FIXTURE_EVAL, FIXTURE_REPO, JAVA_ROOT, FakeLLM
 from typer.testing import CliRunner
 
 from codeatlas.cli import app
 from codeatlas.eval.dataset import EvalItem, ExpectedSource, load_eval_set, resolve_expected_sources
+from codeatlas.eval.judge import judge_answer
 from codeatlas.eval.metrics import citation_precision, hit_at_k, recall_at_k, reciprocal_rank
 from codeatlas.eval.runner import category_markdown, evaluate, report_markdown, run_metadata, to_markdown
 from codeatlas.models import Chunk
@@ -59,6 +60,28 @@ def test_unresolvable_expected_sources_fail_loudly():
         resolved("payment/PaymentService.java::PaymentService.refund")
     with pytest.raises(ValueError, match="unresolved"):
         ExpectedSource.parse("payment/PaymentService.java::PaymentService.charge").matches(span(PAYMENT, 20, 28))
+
+
+def test_judge_forwards_thinking_and_never_scores_a_bad_verdict_as_faithful():
+    ctx = [span(PAYMENT, 20, 28, text="charge() retries three times")]
+    good = FakeLLM('{"claims": 4, "supported": 3, "correct": true}')
+    verdict = judge_answer(good, "q", "a", ctx, thinking="disabled")
+    assert good.thinking == ["disabled"]
+    assert (verdict["faithfulness"], verdict["correct"], verdict["judge_error"]) == (0.75, True, None)
+
+    truncated = judge_answer(FakeLLM('{"claims": 4, "supp', stop_reason="max_tokens"), "q", "a", ctx)
+    assert truncated["faithfulness"] is None and truncated["judge_error"] == "truncated"
+    garbled = judge_answer(FakeLLM("I think it is mostly right."), "q", "a", ctx)
+    assert garbled["faithfulness"] is None and garbled["judge_error"] == "unparseable"
+
+
+def test_bedrock_request_carries_the_thinking_type():
+    pytest.importorskip("boto3")
+    from codeatlas.llm import BedrockLLM
+
+    llm = BedrockLLM("some-model", region="us-east-1")  # building a request needs no credentials
+    assert llm._request("s", "p", 300, "disabled")["additionalModelRequestFields"] == {"thinking": {"type": "disabled"}}
+    assert "additionalModelRequestFields" not in llm._request("s", "p", 300)
 
 
 def test_retrieval_metrics():

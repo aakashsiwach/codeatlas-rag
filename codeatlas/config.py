@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     llm_input_cost_per_mtok: float = 0.0
     llm_output_cost_per_mtok: float = 0.0
     aws_region: str | None = None
+    # Thinking type sent with LLM-judge calls so reasoning cannot eat the judge's small output budget.
+    # "disabled" works for most models; some newer ones reject it and turn thinking off with another
+    # value (check the provider docs). Empty string sends nothing and keeps the model default.
+    judge_thinking: str = "disabled"
 
     # Retrieval defaults and hallucination controls
     default_mode: str = "hybrid+graph"

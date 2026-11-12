@@ -27,24 +27,41 @@ Respond with only this JSON object:
 _JSON = re.compile(r"\{.*\}", re.DOTALL)
 
 
+JUDGE_MAX_TOKENS = 300
+
+
 def judge_answer(
-    llm: LLM, question: str, answer: str, context: list[Chunk], reference: str | None = None
+    llm: LLM,
+    question: str,
+    answer: str,
+    context: list[Chunk],
+    reference: str | None = None,
+    *,
+    thinking: str | None = None,
 ) -> dict[str, Any]:
+    """Score one answer. thinking is passed to the provider (e.g. "disabled") so that reasoning tokens
+    cannot use up the small output budget. A truncated or unparseable verdict scores None, not 1.0."""
     prompt = JUDGE_PROMPT.format(
         context=build_prompt(question, context),
         answer=answer,
         reference=f"\nReference answer:\n<reference>\n{reference}\n</reference>\n" if reference else "",
     )
-    resp = llm.complete(JUDGE_SYSTEM, prompt, 300)
+    resp = llm.complete(JUDGE_SYSTEM, prompt, JUDGE_MAX_TOKENS, thinking=thinking)
+    tokens = resp.usage.input_tokens + resp.usage.output_tokens
+    truncated = resp.stop_reason == "max_tokens"
     match = _JSON.search(resp.text)
     try:
-        data = json.loads(match.group(0)) if match else {}
+        data = json.loads(match.group(0)) if match else None
     except json.JSONDecodeError:
-        data = {}
+        data = None
+    if truncated or not isinstance(data, dict) or "claims" not in data:
+        error = "truncated" if truncated else "unparseable"
+        return {"faithfulness": None, "correct": None, "judge_tokens": tokens, "judge_error": error, "raw": resp.text}
     claims = int(data.get("claims") or 0)
     supported = int(data.get("supported") or 0)
     return {
         "faithfulness": 1.0 if claims == 0 else min(1.0, supported / claims),
         "correct": data.get("correct"),
-        "judge_tokens": resp.usage.input_tokens + resp.usage.output_tokens,
+        "judge_tokens": tokens,
+        "judge_error": None,
     }

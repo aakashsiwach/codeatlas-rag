@@ -41,6 +41,7 @@ class ItemResult:
     citation_precision: float | None = None
     faithfulness: float | None = None
     correct: bool | None = None
+    judge_error: str | None = None  # "truncated" or "unparseable": the verdict was not scored
 
 
 def _mean(values: list[float | None]) -> float | None:
@@ -82,6 +83,8 @@ class EvalReport:
             out["faithfulness"] = _mean([r.faithfulness for r in answerable])
             correct = [float(r.correct) for r in answerable if r.correct is not None]
             out["answer_accuracy"] = round(statistics.fmean(correct), 4) if correct else None
+            if any(r.faithfulness is not None or r.judge_error for r in answerable):
+                out["judge_errors"] = sum(1 for r in answerable if r.judge_error)
         return out
 
     def by_category(self) -> dict[str, dict[str, Any]]:
@@ -171,9 +174,17 @@ def evaluate(
                     item.expected_sources, [c.chunk for c in answer.citations]
                 )
                 if judge is not None:
-                    verdict = judge_answer(judge, item.question, answer.answer, answer.context, item.reference_answer)
+                    verdict = judge_answer(
+                        judge,
+                        item.question,
+                        answer.answer,
+                        answer.context,
+                        item.reference_answer,
+                        thinking=atlas.settings.judge_thinking or None,
+                    )
                     result.faithfulness = verdict["faithfulness"]
                     result.correct = verdict["correct"]
+                    result.judge_error = verdict["judge_error"]
         report.items.append(result)
     return report
 
@@ -236,6 +247,8 @@ def run_metadata(
         }
     if with_answers or judge:
         meta["llm"] = f"{settings.llm_provider}:{settings.llm_model}"
+        if judge:
+            meta["judge_thinking"] = settings.judge_thinking or "model default"
         meta["min_vector_similarity"] = settings.min_vector_similarity
         meta["min_rerank_confidence"] = settings.min_rerank_confidence
     return meta

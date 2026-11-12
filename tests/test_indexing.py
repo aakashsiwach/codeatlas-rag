@@ -9,7 +9,7 @@ from codeatlas.ingest.indexer import IndexMismatchError
 def test_full_then_incremental_indexing(settings, repo):
     atlas = CodeAtlas(settings, embedder=HashingEmbedder())
     first = atlas.index(repo)
-    assert first.mode == "incremental"
+    assert first.mode == "full"  # nothing indexed yet, so the first run is a full build
     assert first.files_scanned > 0
     assert first.files_changed == first.files_scanned
     assert first.chunks_written == atlas.store.count_chunks() == atlas.vectors.count()
@@ -17,6 +17,7 @@ def test_full_then_incremental_indexing(settings, repo):
     assert not first.errors
 
     second = atlas.index(repo)
+    assert second.mode == "incremental"
     assert second.files_changed == 0
     assert second.chunks_written == 0
     assert second.files_unchanged == first.files_scanned

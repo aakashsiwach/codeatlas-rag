@@ -74,7 +74,7 @@ class Indexer:
             files = discover(repo, self.settings.exclude_dirs, self.settings.max_file_bytes)
             present = {f.path for f in files}
             deleted = sorted(p for p in existing if p not in present)
-            mode = "full" if force else "incremental"
+            mode = "full" if force or not existing else "incremental"
         else:
             files, deleted = [], []
             for rel in sorted({p.replace("\\", "/").lstrip("/") for p in only_paths}):

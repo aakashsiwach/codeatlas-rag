@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from codeatlas import __version__
-from codeatlas.eval.dataset import EvalItem
+from codeatlas.eval.dataset import EvalItem, resolve_expected_sources
 from codeatlas.eval.judge import judge_answer
 from codeatlas.eval.metrics import citation_precision, hit_at_k, percentile, recall_at_k, reciprocal_rank
 from codeatlas.llm import LLM
@@ -111,6 +111,10 @@ def evaluate(
     judge: LLM | None = None,
 ) -> EvalReport:
     report = EvalReport(config=cfg.name, k=cfg.k)
+    if any(e.symbol and e.definitions is None for item in items for e in item.expected_sources):
+        if atlas.repo_path is None:
+            raise ValueError("Symbol-level expected sources need the indexed repository; index a repo first")
+        items = resolve_expected_sources(items, atlas.repo_path)
     for item in items:
         start = time.perf_counter()
         answer = None

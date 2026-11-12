@@ -1,11 +1,12 @@
 import json
 from pathlib import Path
 
-from conftest import FIXTURE_EVAL
+import pytest
+from conftest import FIXTURE_EVAL, FIXTURE_REPO, JAVA_ROOT
 from typer.testing import CliRunner
 
 from codeatlas.cli import app
-from codeatlas.eval.dataset import ExpectedSource, load_eval_set
+from codeatlas.eval.dataset import EvalItem, ExpectedSource, load_eval_set, resolve_expected_sources
 from codeatlas.eval.metrics import citation_precision, hit_at_k, recall_at_k, reciprocal_rank
 from codeatlas.eval.runner import category_markdown, evaluate, report_markdown, run_metadata, to_markdown
 from codeatlas.models import Chunk
@@ -16,16 +17,48 @@ def chunk(path: str, symbol: str | None = None, text: str = "", kind: str = "met
     return Chunk(id=path + str(symbol), path=path, kind=kind, text=text, embed_text=text, start_line=1, end_line=2, symbol=symbol)
 
 
-def test_expected_source_matching():
-    c = chunk("src/main/java/x/owner/OwnerController.java", "x.owner.OwnerController#processFindForm")
-    assert ExpectedSource.parse("owner/OwnerController.java").matches(c)
-    assert ExpectedSource.parse("owner/OwnerController.java::OwnerController.processFindForm").matches(c)
-    assert ExpectedSource.parse("owner/OwnerController.java::OwnerController").matches(c)
-    assert not ExpectedSource.parse("owner/OwnerController.java::OwnerController.showOwner").matches(c)
-    assert not ExpectedSource.parse("Controller.java").matches(c)
+def span(path: str, start: int, end: int, kind: str = "method", symbol: str | None = None, text: str = "") -> Chunk:
+    return Chunk(id=f"{path}:{start}", path=path, kind=kind, text=text, embed_text=text, start_line=start, end_line=end, symbol=symbol)
 
-    naive = chunk("src/main/java/x/owner/OwnerController.java", None, "public String processFindForm(", "naive")
-    assert ExpectedSource.parse("owner/OwnerController.java::OwnerController.processFindForm").matches(naive)
+
+PAYMENT = f"{JAVA_ROOT}/payment/PaymentService.java"  # class: lines 9-34, charge(): lines 20-28
+
+
+def resolved(*specs: str) -> list[ExpectedSource]:
+    item = EvalItem(id="q", question="q", expected_sources=[ExpectedSource.parse(s) for s in specs])
+    return resolve_expected_sources([item], FIXTURE_REPO)[0].expected_sources
+
+
+def test_expected_source_matching_is_by_definition_lines():
+    method, cls, whole_file = resolved(
+        "payment/PaymentService.java::PaymentService.charge",
+        "payment/PaymentService.java::PaymentService",
+        "payment/PaymentService.java",
+    )
+    assert method.definitions == ((PAYMENT, 20, 28),) and method.is_method
+    assert cls.definitions == ((PAYMENT, 9, 34),) and not cls.is_method
+
+    # Same rule for every chunker: the chunk's line range must overlap the definition.
+    assert method.matches(span(PAYMENT, 20, 28, symbol="com.example.shop.payment.PaymentService#charge"))
+    assert method.matches(span(PAYMENT, 1, 21, kind="naive"))  # partial overlap counts
+    assert method.matches(span(PAYMENT, 27, 40, kind="naive"))
+    # A naive chunk that only mentions the name (e.g. a call site or a later method) does not count.
+    assert not method.matches(span(PAYMENT, 29, 34, kind="naive", text="return charge(order);"))
+    # A class outline spans the class but holds only signatures: it covers the class, not its methods.
+    outline = span(PAYMENT, 9, 34, kind="class", symbol="com.example.shop.payment.PaymentService")
+    assert not method.matches(outline)
+    assert cls.matches(outline) and cls.matches(span(PAYMENT, 30, 33))
+    # Path must match too, and file-level sources match any chunk of the file.
+    assert not method.matches(span(f"{JAVA_ROOT}/order/Order.java", 20, 28))
+    assert whole_file.matches(span(PAYMENT, 1, 5, kind="naive"))
+    assert not ExpectedSource.parse("Service.java").matches(span(PAYMENT, 1, 5))
+
+
+def test_unresolvable_expected_sources_fail_loudly():
+    with pytest.raises(ValueError, match="PaymentService.refund"):
+        resolved("payment/PaymentService.java::PaymentService.refund")
+    with pytest.raises(ValueError, match="unresolved"):
+        ExpectedSource.parse("payment/PaymentService.java::PaymentService.charge").matches(span(PAYMENT, 20, 28))
 
 
 def test_retrieval_metrics():

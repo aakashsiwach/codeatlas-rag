@@ -135,6 +135,18 @@ upstream `main` @ `500158f`: flows and locations, endpoints, callers of endpoint
 change-impact and caller questions for the code graph, configuration, and 11 questions about things the
 codebase does not contain, which the system should refuse. Re-verify if you evaluate a different revision.
 
+**How a retrieved chunk is matched to an expected source.** A file-level source matches any chunk of that
+file. A `Class.method` source is first resolved to the method's definition lines by parsing the
+repository, and a chunk matches only if it comes from that file and its line range overlaps those lines.
+The same rule applies to every chunker, so naive and AST chunks are scored alike. A class-outline chunk
+holds only member signatures, so it counts for its class but not for the class's methods. A source that
+no longer exists in the repository fails the run instead of silently scoring zero.
+
+> Change from the first baseline run: symbol-level sources used to match by name, and naive chunks
+> (which have no symbol) matched whenever the method name appeared anywhere in the chunk text,
+> including call sites. That favoured the naive baseline, since one large chunk could satisfy several
+> expected methods. Results from before this change are not comparable with later ones.
+
 The comparison is an ablation: each step changes one thing, so each row shows the gain from one technique.
 
 ```bash

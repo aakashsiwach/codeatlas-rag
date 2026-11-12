@@ -3,8 +3,10 @@ reranking and code-graph expansion."""
 
 from __future__ import annotations
 
+import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
+from typing import Any
 
 from codeatlas.embeddings import Embedder
 from codeatlas.endpoints import QUERY_PATH, endpoint_path, paths_match
@@ -19,6 +21,17 @@ from codeatlas.storage.vector_store import VectorStore
 RRF_K = 60
 MODES = ("vector", "bm25", "hybrid")
 FLAGS = ("rewrite", "rerank", "graph")
+# Ranking options that can be overridden per run (`codeatlas eval -o name=value`); shown in config names.
+OPTIONS = ("candidates", "rerank_pool", "graph_depth", "demote_tests")
+
+TEST_INTENT = re.compile(
+    r"\b(tests?|testing|tested|test cases?|junit|mock(s|ed|ing|ito)?|asserts?|assertions?)\b", re.IGNORECASE
+)
+_TEST_FILE = re.compile(r"(^|/)src/test/|(Tests?|IT)\.java$")
+
+
+def is_test_path(path: str) -> bool:
+    return _TEST_FILE.search(path) is not None
 
 
 @dataclass
@@ -31,6 +44,25 @@ class RetrievalConfig:
     candidates: int = 40
     rerank_pool: int = 30
     graph_depth: int = 3
+    demote_tests: bool = True  # rank test code below main code unless the query is about tests
+
+    @staticmethod
+    def parse_options(pairs: list[str]) -> dict[str, Any]:
+        """['demote_tests=false', 'rerank_pool=20'] -> typed overrides."""
+        types = {f.name: f.type for f in fields(RetrievalConfig)}
+        out: dict[str, Any] = {}
+        for pair in pairs:
+            name, sep, raw = pair.partition("=")
+            name = name.strip()
+            if not sep or name not in OPTIONS:
+                raise ValueError(f"Expected name=value with name one of {OPTIONS}, got {pair!r}")
+            if types[name] in (bool, "bool"):
+                if raw.strip().lower() not in ("true", "false", "on", "off", "1", "0"):
+                    raise ValueError(f"{name} must be true or false, got {raw!r}")
+                out[name] = raw.strip().lower() in ("true", "on", "1")
+            else:
+                out[name] = int(raw)
+        return out
 
     @classmethod
     def parse(cls, spec: str, **overrides) -> RetrievalConfig:
@@ -49,7 +81,13 @@ class RetrievalConfig:
 
     @property
     def name(self) -> str:
-        return "+".join([self.mode] + [f for f in FLAGS if getattr(self, f)])
+        base = "+".join([self.mode] + [f for f in FLAGS if getattr(self, f)])
+        changed = [
+            f"{f.name}={getattr(self, f.name)}"
+            for f in fields(self)
+            if f.name in OPTIONS and getattr(self, f.name) != f.default
+        ]
+        return base + (f"[{','.join(changed)}]" if changed else "")
 
 
 @dataclass
@@ -144,6 +182,10 @@ class Retriever:
         else:
             confidence, source = (1.0, "bm25") if scored else (0.0, "none")
 
+        demote_tests = cfg.demote_tests and not TEST_INTENT.search(query)
+        if demote_tests:  # before the rerank pool is cut, so main code fills it
+            scored = _tests_last(scored)
+
         if cfg.rerank:
             if self.reranker is None:
                 raise RuntimeError("Reranking requested but no reranker model is configured")
@@ -155,6 +197,8 @@ class Retriever:
             scored = sorted(pool, key=lambda sc: sc.score, reverse=True)
             confidence, source = (sigmoid(scored[0].score), "rerank") if scored else (0.0, "none")
             timings["rerank"] = _ms(t2)
+            if demote_tests:
+                scored = _tests_last(scored)
 
         results = scored[: cfg.k]
         report = None
@@ -227,6 +271,13 @@ class Retriever:
                     seen.add(chunk.id)
                     budget -= 1
         return out[: cfg.k], None
+
+
+def _tests_last(scored: list[ScoredChunk]) -> list[ScoredChunk]:
+    """Stable partition: main code in its current order, then test code in its current order."""
+    return [sc for sc in scored if not is_test_path(sc.chunk.path)] + [
+        sc for sc in scored if is_test_path(sc.chunk.path)
+    ]
 
 
 def _ms(start: float) -> float:

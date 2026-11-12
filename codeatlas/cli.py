@@ -113,6 +113,9 @@ def evaluate_cmd(
     ),
     k: int = typer.Option(5, "-k"),
     deep_k: Optional[int] = typer.Option(None, "--deep-k", help="Also report recall at this larger cutoff, e.g. 10"),
+    option: List[str] = typer.Option(
+        [], "--option", "-o", help="Ranking option override for every config, e.g. -o demote_tests=false"
+    ),
     answers: bool = typer.Option(False, "--answers", help="Also generate answers and score them"),
     judge: bool = typer.Option(False, "--judge", help="Score faithfulness with an LLM judge (implies --answers)"),
     out: Path = typer.Option(Path("results"), help="Directory for JSON and Markdown results"),
@@ -128,8 +131,12 @@ def evaluate_cmd(
     with_answers = answers or judge
     judge_llm = atlas.llm if judge else None
     reports = []
+    try:
+        overrides = RetrievalConfig.parse_options(option)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--option") from exc
     for spec in [c.strip() for c in configs.split(",") if c.strip()]:
-        cfg = RetrievalConfig.parse(spec, k=k)
+        cfg = RetrievalConfig.parse(spec, k=k, **overrides)
         typer.echo(f"evaluating {cfg.name} on {len(items)} questions...")
         reports.append(evaluate(atlas, items, cfg, with_answers=with_answers, judge=judge_llm, deep_k=deep_k))
 

@@ -6,7 +6,8 @@ from conftest import FakeLLM
 from codeatlas.answer import REFUSAL, count_uncited_sentences, extract_citations
 from codeatlas.atlas import CodeAtlas
 from codeatlas.embeddings import HashingEmbedder
-from codeatlas.retrieval.retriever import RetrievalConfig
+from codeatlas.models import Chunk, ScoredChunk
+from codeatlas.retrieval.retriever import TEST_INTENT, RetrievalConfig, _tests_last
 
 
 def test_retrieval_config_parsing():
@@ -17,6 +18,31 @@ def test_retrieval_config_parsing():
     assert RetrievalConfig.parse("graph").name == "hybrid+graph"
     with pytest.raises(ValueError):
         RetrievalConfig.parse("hybrid+magic")
+
+
+def test_ranking_options_are_typed_and_named():
+    flipped = not RetrievalConfig().demote_tests
+    opts = RetrievalConfig.parse_options([f"demote_tests={'on' if flipped else 'off'}", "rerank_pool=20"])
+    assert opts == {"demote_tests": flipped, "rerank_pool": 20}
+    cfg = RetrievalConfig.parse("hybrid+rerank", **opts)
+    assert cfg.name == f"hybrid+rerank[rerank_pool=20,demote_tests={flipped}]"
+    for bad in (["k=3"], ["demote_tests"], ["demote_tests=maybe"]):
+        with pytest.raises(ValueError):
+            RetrievalConfig.parse_options(bad)
+
+
+def test_test_code_is_ranked_last_unless_the_query_is_about_tests():
+    def sc(path: str) -> ScoredChunk:
+        return ScoredChunk(Chunk(id=path, path=path, kind="method", text="", embed_text="", start_line=1, end_line=2), 1.0, {})
+
+    ranked = [sc("src/test/java/a/OwnerTests.java"), sc("src/main/java/a/Owner.java"), sc("src/main/java/a/PetIT.java")]
+    ranked.append(sc("src/main/java/a/Pet.java"))
+    assert [s.chunk.path.rsplit("/", 1)[1] for s in _tests_last(ranked)] == [
+        "Owner.java", "Pet.java", "OwnerTests.java", "PetIT.java"
+    ]
+    assert TEST_INTENT.search("Which tests cover the duplicate pet check?")
+    assert TEST_INTENT.search("Is there a JUnit or Mockito setup?")
+    assert not TEST_INTENT.search("What happens when a duplicate pet is added? Show the latest owner.")
 
 
 @pytest.mark.parametrize("mode", ["vector", "bm25", "hybrid"])

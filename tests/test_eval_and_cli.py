@@ -94,10 +94,14 @@ def test_retrieval_metrics():
     assert citation_precision(expected, []) is None
 
 
-def test_petclinic_eval_set_is_well_formed():
-    items = load_eval_set(Path(__file__).parents[1] / "eval" / "petclinic.yaml")
-    assert len(items) >= 50
-    assert len({i.id for i in items}) == len(items)
+def test_petclinic_eval_splits_are_well_formed():
+    eval_dir = Path(__file__).parents[1] / "eval"
+    dev = load_eval_set(eval_dir / "petclinic-dev.yaml")
+    test = load_eval_set(eval_dir / "petclinic-test.yaml")
+    items = dev + test
+    assert len(items) >= 50 and len(dev) > len(test) > 0
+    assert len({i.id for i in items}) == len(items)  # no question in both splits
+    assert {i.category for i in dev} == {i.category for i in test}  # stratified: every category in both
     for item in items:
         assert bool(item.expected_sources) == item.answerable, item.id
 

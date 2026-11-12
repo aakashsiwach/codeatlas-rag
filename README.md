@@ -130,10 +130,14 @@ questions:
     answerable: false          # the system should refuse
 ```
 
-`eval/petclinic.yaml` has 64 questions for Spring PetClinic, with every expected source verified against
-upstream `main` @ `500158f`: flows and locations, endpoints, callers of endpoints (`redirect:` URLs),
-change-impact and caller questions for the code graph, configuration, and 11 questions about things the
-codebase does not contain, which the system should refuse. Re-verify if you evaluate a different revision.
+The PetClinic set has 64 questions, with every expected source verified against upstream `main` @
+`500158f`: flows and locations, endpoints, callers of endpoints (`redirect:` URLs), change-impact and
+caller questions for the code graph, configuration, and 11 questions about things the codebase does not
+contain, which the system should refuse. Re-verify if you evaluate a different revision.
+
+It is split, stratified by category, into `eval/petclinic-dev.yaml` (40 questions) and a held-out
+`eval/petclinic-test.yaml` (24). Every tuning decision is made on dev only. The test split is run once,
+after the setup is frozen, so its numbers are not fitted to it.
 
 **How a retrieved chunk is matched to an expected source.** A file-level source matches any chunk of that
 file. A `Class.method` source is first resolved to the method's definition lines by parsing the
@@ -143,9 +147,11 @@ holds only member signatures, so it counts for its class but not for the class's
 no longer exists in the repository fails the run instead of silently scoring zero.
 
 > Change from the first baseline run: symbol-level sources used to match by name, and naive chunks
-> (which have no symbol) matched whenever the method name appeared anywhere in the chunk text,
-> including call sites. That favoured the naive baseline, since one large chunk could satisfy several
-> expected methods. Results from before this change are not comparable with later ones.
+> (which have no symbol) matched whenever the method name appeared anywhere in the chunk text. That
+> credited chunks that only *call* a method and missed chunks holding part of a method without its
+> signature line. On the full 64-question set the change left the AST setups unchanged and raised the
+> naive baseline (recall@5 0.660 → 0.682, MRR 0.598 → 0.638). Results from before the change are not
+> comparable with later ones.
 
 The comparison is an ablation: each step changes one thing, so each row shows the gain from one technique.
 
@@ -155,14 +161,18 @@ git -C repos/spring-petclinic checkout 500158f
 
 # 1. Baseline: fixed-size chunks + vector search (separate index)
 codeatlas --index-dir .codeatlas-naive index repos/spring-petclinic --chunker naive
-codeatlas --index-dir .codeatlas-naive eval eval/petclinic.yaml -k 5 --configs vector
+codeatlas --index-dir .codeatlas-naive eval eval/petclinic-dev.yaml -k 5 --deep-k 10 --configs vector
 
 # 2-5. AST chunks, then add keyword search, the reranker and the code graph one at a time
 codeatlas index repos/spring-petclinic
-codeatlas eval eval/petclinic.yaml -k 5 --configs vector,hybrid,hybrid+rerank,hybrid+rerank+graph
+codeatlas eval eval/petclinic-dev.yaml -k 5 --deep-k 10 --configs vector,hybrid,hybrid+rerank,hybrid+rerank+graph
 
-# 6. Answer quality, only for the best one or two setups (repeat 2-3 times; judge scores vary)
-codeatlas eval eval/petclinic.yaml -k 5 --configs hybrid+rerank+graph --judge
+# Ranking options can be switched per run to measure them, e.g. -o demote_tests=false
+
+# 6. Once the setup is frozen: the held-out test split, then answer quality for the chosen setup
+#    (repeat the judged run 2-3 times; judge scores vary)
+codeatlas eval eval/petclinic-test.yaml -k 5 --deep-k 10 --configs <frozen setup>
+codeatlas eval eval/petclinic-test.yaml -k 5 --configs <frozen setup> --judge
 ```
 
 Retrieval metrics (recall@k, hit@k, MRR) do not call the LLM, so they are cheap and repeatable. The

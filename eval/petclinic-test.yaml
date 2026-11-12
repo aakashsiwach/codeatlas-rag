@@ -1,0 +1,182 @@
+# TEST split (held out): 24 of 64 questions, stratified by category.
+# Do not tune on this file or run it until the setup is frozen.
+#
+# Evaluation set for spring-projects/spring-petclinic (main branch).
+# Expected sources verified against spring-petclinic main @ 500158f (2026-09-29).
+# Re-check them if you evaluate a different revision.
+#
+# Expected sources are path suffixes, optionally with a symbol: "path/File.java" or
+# "path/File.java::Class.method". Java paths are relative to
+# src/main/java/org/springframework/samples/petclinic/; resource paths are suffixes such as
+# "resources/application.properties" or "db/h2/schema.sql". HTML templates are not indexed,
+# so they are never expected sources.
+#
+# Categories: flow, locate, endpoint, endpoint-callers, impact, config, model, unanswerable.
+
+questions:
+
+  # --- config (2) ------------------------------------------------------------
+
+  - id: mysql-config
+    question: How do I configure the application to use MySQL?
+    category: config
+    expected_sources:
+      - resources/application-mysql.properties
+
+  - id: native-image-hints
+    question: How is the application prepared for GraalVM native images?
+    category: config
+    expected_sources:
+      - PetClinicRuntimeHints.java::PetClinicRuntimeHints.registerHints
+
+  # --- endpoint (3) ----------------------------------------------------------
+
+  - id: owner-details
+    question: Which method renders the owner details page?
+    category: endpoint
+    expected_sources:
+      - owner/OwnerController.java::OwnerController.showOwner
+
+  - id: vets-json
+    question: Which endpoint returns the list of vets as JSON or XML?
+    category: endpoint
+    expected_sources:
+      - vet/VetController.java::VetController.showResourcesVetList
+      - vet/Vets.java
+
+  - id: oups-endpoint
+    question: What does the /oups endpoint do?
+    category: endpoint
+    expected_sources:
+      - system/CrashController.java::CrashController.triggerException
+
+  # --- endpoint-callers (2) --------------------------------------------------
+
+  - id: redirects-to-owner-edit
+    question: Which handler redirects back to /owners/{ownerId}/edit?
+    category: endpoint-callers
+    expected_sources:
+      - owner/OwnerController.java::OwnerController.processUpdateOwnerForm
+
+  - id: redirects-to-vets-page
+    question: Who redirects to /vets.html and why?
+    category: endpoint-callers
+    expected_sources:
+      - vet/VetController.java::VetController.showVetList
+
+  # --- flow (4) --------------------------------------------------------------
+
+  - id: owner-create-validation
+    question: What happens when the new owner form is submitted with errors?
+    category: flow
+    expected_sources:
+      - owner/OwnerController.java::OwnerController.processCreationForm
+
+  - id: owner-search-single-result
+    question: What happens when an owner search matches exactly one owner?
+    category: flow
+    expected_sources:
+      - owner/OwnerController.java::OwnerController.processFindForm
+
+  - id: owner-search-out-of-range-page
+    question: What does the owner search do when the requested page number is out of range?
+    category: flow
+    expected_sources:
+      - owner/OwnerController.java::OwnerController.processFindForm
+
+  - id: pet-birth-date-future
+    question: Can a pet be saved with a birth date in the future?
+    category: flow
+    expected_sources:
+      - owner/PetController.java::PetController.processCreationForm
+      - owner/PetController.java::PetController.processUpdateForm
+
+  # --- impact (5) ------------------------------------------------------------
+
+  - id: owner-impact
+    question: What breaks if I change the Owner entity?
+    category: impact
+    expected_sources:
+      - owner/OwnerController.java
+      - owner/PetController.java
+      - owner/VisitController.java
+      - owner/OwnerRepository.java
+
+  - id: vetrepository-impact
+    question: What breaks if I change VetRepository?
+    category: impact
+    expected_sources:
+      - vet/VetController.java
+
+  - id: petvalidator-impact
+    question: Who uses PetValidator?
+    category: impact
+    expected_sources:
+      - owner/PetController.java::PetController.initPetBinder
+
+  - id: addpet-callers
+    question: Who calls Owner.addPet?
+    category: impact
+    expected_sources:
+      - owner/PetController.java::PetController.initCreationForm
+      - owner/PetController.java::PetController.processCreationForm
+      - owner/PetController.java::PetController.updatePetDetails
+
+  - id: addvisit-callers
+    question: Who calls Owner.addVisit?
+    category: impact
+    expected_sources:
+      - owner/VisitController.java::VisitController.processNewVisitForm
+
+  # --- locate (3) ------------------------------------------------------------
+
+  - id: pet-validation
+    question: Where are pets validated and what rules apply?
+    category: locate
+    expected_sources:
+      - owner/PetValidator.java::PetValidator.validate
+
+  - id: pet-type-dropdown
+    question: Where do the pet type options in the pet form come from?
+    category: locate
+    expected_sources:
+      - owner/PetController.java::PetController.populatePetTypes
+      - owner/PetTypeRepository.java
+
+  - id: telephone-validation
+    question: What format must an owner's telephone number have?
+    category: locate
+    expected_sources:
+      - owner/Owner.java
+      - messages/messages.properties
+
+  # --- model (1) -------------------------------------------------------------
+
+  - id: vet-specialties
+    question: How are vet specialties modelled?
+    category: model
+    expected_sources:
+      - vet/Vet.java
+      - vet/Specialty.java
+
+  # --- unanswerable (4) ------------------------------------------------------
+
+  - id: no-email
+    question: How are appointment reminder emails sent to owners?
+    category: unanswerable
+    answerable: false
+
+  - id: no-rate-limit
+    question: How is rate limiting applied to the vets API?
+    category: unanswerable
+    answerable: false
+
+  - id: no-scheduled
+    question: Which scheduled job cleans up old visits?
+    category: unanswerable
+    answerable: false
+
+  - id: no-flyway
+    question: Where are the Flyway migration scripts?
+    category: unanswerable
+    answerable: false

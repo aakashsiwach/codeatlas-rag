@@ -1,0 +1,132 @@
+# Starter evaluation set for spring-projects/spring-petclinic (main branch).
+# Paths are suffixes relative to src/main/java/org/springframework/samples/petclinic/.
+# Verify each expected source against your checkout, then grow this to 50-100 questions.
+# Format: "path/File.java" or "path/File.java::Class.method".
+
+questions:
+  - id: owner-search
+    question: How does searching for owners by last name work?
+    category: flow
+    expected_sources:
+      - owner/OwnerController.java::OwnerController.processFindForm
+      - owner/OwnerRepository.java
+
+  - id: owner-create-validation
+    question: What happens when the new owner form is submitted with errors?
+    category: flow
+    expected_sources:
+      - owner/OwnerController.java::OwnerController.processCreationForm
+
+  - id: owner-update-endpoint
+    question: Which endpoint updates an existing owner and where is it handled?
+    category: endpoint
+    expected_sources:
+      - owner/OwnerController.java::OwnerController.processUpdateOwnerForm
+
+  - id: owner-details
+    question: Which method renders the owner details page?
+    category: endpoint
+    expected_sources:
+      - owner/OwnerController.java::OwnerController.showOwner
+
+  - id: pet-validation
+    question: Where are pets validated and what rules apply?
+    category: locate
+    expected_sources:
+      - owner/PetValidator.java::PetValidator.validate
+
+  - id: pet-type-conversion
+    question: How is a pet type string from the form converted into a PetType object?
+    category: locate
+    expected_sources:
+      - owner/PetTypeFormatter.java::PetTypeFormatter.parse
+
+  - id: add-pet
+    question: How is a new pet added to an owner?
+    category: flow
+    expected_sources:
+      - owner/PetController.java::PetController.processCreationForm
+      - owner/Owner.java::Owner.addPet
+
+  - id: visit-booking
+    question: How do I book a new visit for a pet?
+    category: flow
+    expected_sources:
+      - owner/VisitController.java::VisitController.processNewVisitForm
+      - owner/VisitController.java::VisitController.loadPetWithVisit
+
+  - id: vets-cache
+    question: Is the vet list cached? Where is the cache configured?
+    category: config
+    expected_sources:
+      - vet/VetRepository.java
+      - system/CacheConfiguration.java
+
+  - id: vets-json
+    question: Which endpoint returns the list of vets as JSON or XML?
+    category: endpoint
+    expected_sources:
+      - vet/VetController.java::VetController.showResourcesVetList
+
+  - id: vets-pagination
+    question: How is the vet list paginated?
+    category: flow
+    expected_sources:
+      - vet/VetController.java::VetController.showVetList
+
+  - id: vet-specialties
+    question: How are vet specialties modelled?
+    category: model
+    expected_sources:
+      - vet/Vet.java
+      - vet/Specialty.java
+
+  - id: entity-base
+    question: What base classes do the JPA entities share?
+    category: model
+    expected_sources:
+      - model/BaseEntity.java
+      - model/NamedEntity.java
+      - model/Person.java
+
+  - id: error-demo
+    question: How does the application demonstrate error handling?
+    category: locate
+    expected_sources:
+      - system/CrashController.java::CrashController.triggerException
+
+  - id: owner-impact
+    question: What breaks if I change the Owner entity?
+    category: impact
+    expected_sources:
+      - owner/OwnerController.java
+      - owner/PetController.java
+      - owner/OwnerRepository.java
+
+  - id: pet-impact
+    question: Who calls Owner.getPet?
+    category: impact
+    expected_sources:
+      - owner/PetController.java
+      - owner/VisitController.java
+
+  - id: welcome
+    question: Which controller serves the home page?
+    category: endpoint
+    expected_sources:
+      - system/WelcomeController.java
+
+  - id: no-kafka
+    question: How are Kafka consumer offsets committed?
+    category: unanswerable
+    answerable: false
+
+  - id: no-graphql
+    question: Where is the GraphQL schema for pets defined?
+    category: unanswerable
+    answerable: false
+
+  - id: no-oauth
+    question: How does the OAuth2 login flow refresh tokens?
+    category: unanswerable
+    answerable: false

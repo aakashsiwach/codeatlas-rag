@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.env
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# CodeAtlas indexes, eval output and demo checkouts
+.codeatlas*/
+results/
+repos/
+
+.idea/
+.vscode/
+.DS_Store

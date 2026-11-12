@@ -1,0 +1,26 @@
+questions:
+  - id: payment-retry
+    question: Where is the payment retry logic and what triggers it?
+    category: locate
+    expected_sources:
+      - payment/PaymentService.java::PaymentService.charge
+
+  - id: order-endpoint-callers
+    question: Which services call the /orders/{id} endpoint?
+    category: endpoint
+    expected_sources:
+      - reporting/OrderLookupClient.java
+      - billing/InvoiceJob.java::InvoiceJob.syncInvoices
+
+  - id: customer-impact
+    question: What breaks if I change the Customer entity?
+    category: impact
+    expected_sources:
+      - order/Order.java
+      - order/OrderServiceImpl.java::OrderServiceImpl.placeOrder
+      - payment/PaymentService.java::PaymentService.charge
+
+  - id: kafka
+    question: How are Kafka consumer offsets committed?
+    category: unanswerable
+    answerable: false

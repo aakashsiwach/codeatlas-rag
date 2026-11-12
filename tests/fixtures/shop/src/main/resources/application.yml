@@ -1,0 +1,8 @@
+spring:
+  application:
+    name: shop
+  datasource:
+    url: jdbc:h2:mem:shop
+payment:
+  gateway:
+    url: https://gateway.example.com

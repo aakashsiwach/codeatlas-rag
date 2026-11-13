@@ -71,6 +71,15 @@ def test_file_viewer_serves_only_indexed_files(client, repo, tmp_path):
     assert client.get("/api/file", params={"path": rel}).json()["total_lines"] > 0
 
 
+def test_file_viewer_validates_the_line_range(client):
+    rel = f"{JAVA_ROOT}/order/OrderController.java"
+    assert client.get("/api/file", params={"path": rel, "start": 0}).status_code == 422
+    assert client.get("/api/file", params={"path": rel, "end": -5}).status_code == 422
+    assert client.get("/api/file", params={"path": rel, "start": 9, "end": 3}).status_code == 400
+    body = client.get("/api/file", params={"path": rel, "start": 5, "end": 100000}).json()
+    assert body["start_line"] == 5 and body["end_line"] == body["total_lines"]
+
+
 def test_webhook_reindexes_changed_files(client, atlas, repo):
     rel = f"{JAVA_ROOT}/payment/PaymentService.java"
     path = repo / rel

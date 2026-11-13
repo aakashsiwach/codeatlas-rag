@@ -9,7 +9,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -107,7 +107,11 @@ def create_app(settings: Settings | None = None, atlas: CodeAtlas | None = None)
         return {"targets": targets, "dependents": [h.to_dict() for h in hits], "report": report}
 
     @app.get("/api/file")
-    def get_file(path: str, start: int | None = None, end: int | None = None) -> dict[str, Any]:
+    def get_file(
+        path: str, start: int | None = Query(default=None, ge=1), end: int | None = Query(default=None, ge=1)
+    ) -> dict[str, Any]:
+        if start is not None and end is not None and end < start:
+            raise HTTPException(400, "end must not be before start")
         repo = atlas.repo_path
         if repo is None:
             raise HTTPException(404, "No repository indexed")

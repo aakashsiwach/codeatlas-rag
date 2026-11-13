@@ -58,6 +58,8 @@ class Settings(BaseSettings):
     llm_model: str | None = None
     llm_base_url: str | None = None  # OpenAI-compatible servers (vLLM, Ollama, LM Studio)
     llm_max_tokens: int = 1200
+    llm_timeout_s: float = 120.0  # per request
+    llm_max_retries: int = 4  # with backoff, on throttling and transient errors
     llm_input_cost_per_mtok: float = 0.0
     llm_output_cost_per_mtok: float = 0.0
     aws_region: str | None = None

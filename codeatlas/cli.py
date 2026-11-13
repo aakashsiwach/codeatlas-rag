@@ -135,20 +135,28 @@ def evaluate_cmd(
         overrides = RetrievalConfig.parse_options(option)
     except ValueError as exc:
         raise typer.BadParameter(str(exc), param_hint="--option") from exc
+    metadata = run_metadata(atlas, eval_set, items, with_answers=with_answers, judge=judge)
+    out.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+
+    def write_reports() -> None:
+        """Rewritten after every configuration, so a crash or Ctrl-C keeps the finished ones."""
+        (out / f"eval-{stamp}.md").write_text(report_markdown(reports, metadata, weakest), encoding="utf-8")
+        (out / f"eval-{stamp}.json").write_text(
+            json.dumps({"metadata": metadata, "reports": [r.to_dict() for r in reports]}, indent=2),
+            encoding="utf-8",
+        )
+
     for spec in [c.strip() for c in configs.split(",") if c.strip()]:
         cfg = RetrievalConfig.parse(spec, k=k, **overrides)
         typer.echo(f"evaluating {cfg.name} on {len(items)} questions...")
         reports.append(evaluate(atlas, items, cfg, with_answers=with_answers, judge=judge_llm, deep_k=deep_k))
+        write_reports()
+        errors = reports[-1].summary().get("errors")
+        if errors:
+            typer.secho(f"  {errors} question(s) failed with LLM errors; see the report", fg=typer.colors.YELLOW)
 
-    metadata = run_metadata(atlas, eval_set, items, with_answers=with_answers, judge=judge)
     typer.echo("\n" + to_markdown(reports) + "\n\n" + category_markdown(reports))
-    out.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    (out / f"eval-{stamp}.md").write_text(report_markdown(reports, metadata, weakest), encoding="utf-8")
-    (out / f"eval-{stamp}.json").write_text(
-        json.dumps({"metadata": metadata, "reports": [r.to_dict() for r in reports]}, indent=2),
-        encoding="utf-8",
-    )
     typer.echo(f"\nfull report (run metadata, weakest questions) written to {out}/eval-{stamp}.{{md,json}}")
 
 

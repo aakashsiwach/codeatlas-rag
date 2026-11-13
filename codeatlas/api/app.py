@@ -19,7 +19,7 @@ from codeatlas.api.webhook import changed_paths, verify_signature
 from codeatlas.atlas import CodeAtlas
 from codeatlas.config import Settings
 from codeatlas.ingest.walker import classify
-from codeatlas.llm import LLMNotConfiguredError
+from codeatlas.llm import LLMError, LLMNotConfiguredError
 
 log = logging.getLogger(__name__)
 
@@ -41,6 +41,11 @@ def _sse(events: Iterator[dict[str, Any]]) -> Iterator[str]:
             yield f"event: {event['event']}\ndata: {json.dumps(event['data'])}\n\n"
     except LLMNotConfiguredError as exc:
         yield f"event: error\ndata: {json.dumps({'detail': str(exc)})}\n\n"
+    except LLMError as exc:
+        yield f"event: error\ndata: {json.dumps({'detail': str(exc), **exc.to_dict()})}\n\n"
+    except Exception:  # noqa: BLE001 - the client must learn the stream failed, not see it just stop
+        log.exception("ask stream failed")
+        yield f"event: error\ndata: {json.dumps({'detail': 'Internal error while answering', 'kind': 'internal'})}\n\n"
 
 
 def create_app(settings: Settings | None = None, atlas: CodeAtlas | None = None) -> FastAPI:
@@ -93,6 +98,9 @@ def create_app(settings: Settings | None = None, atlas: CodeAtlas | None = None)
             return atlas.engine.ask(req.question, cfg).to_dict()
         except LLMNotConfiguredError as exc:
             raise HTTPException(503, str(exc)) from exc
+        except LLMError as exc:
+            status = 503 if exc.kind in ("throttled", "unavailable", "timeout", "network") else 502
+            raise HTTPException(status, {"detail": str(exc), **exc.to_dict()}) from exc
 
     @app.post("/api/ask/stream")
     def ask_stream(req: AskRequest) -> StreamingResponse:

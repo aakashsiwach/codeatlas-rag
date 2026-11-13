@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from codeatlas.config import Settings
-from codeatlas.llm import LLM, LLMUsage, is_truncated, thinking_for
+from codeatlas.llm import LLM, LLMError, LLMUsage, is_truncated, thinking_for
 from codeatlas.models import Chunk
 from codeatlas.retrieval.retriever import RetrievalConfig, RetrievalResult, Retriever
 from codeatlas.tracing import Trace, Tracer
@@ -215,14 +215,18 @@ class AnswerEngine:
             answer = self._refusal(question, cfg, rr, context)
         else:
             llm = self.llm_factory()
-            with trace.span("generate", model=llm.name) as span:
-                resp = llm.complete(
-                    SYSTEM_PROMPT,
-                    build_prompt(question, context),
-                    self.settings.llm_max_tokens,
-                    thinking=thinking_for(self.settings, "answer"),
-                )
-                span.update(input_tokens=resp.usage.input_tokens, output_tokens=resp.usage.output_tokens)
+            try:
+                with trace.span("generate", model=llm.name) as span:
+                    resp = llm.complete(
+                        SYSTEM_PROMPT,
+                        build_prompt(question, context),
+                        self.settings.llm_max_tokens,
+                        thinking=thinking_for(self.settings, "answer"),
+                    )
+                    span.update(input_tokens=resp.usage.input_tokens, output_tokens=resp.usage.output_tokens)
+            except LLMError as exc:
+                self.tracer.finish(trace, error=exc.to_dict())
+                raise
             answer = self._finalize(question, cfg, resp.text, context, rr, resp.usage, resp.stop_reason)
         self._finish(trace, answer)
         return answer
@@ -245,19 +249,23 @@ class AnswerEngine:
             llm = self.llm_factory()
             parts: list[str] = []
             usage = LLMUsage()
-            with trace.span("generate", model=llm.name) as span:
-                for item in llm.stream(
-                    SYSTEM_PROMPT,
-                    build_prompt(question, context),
-                    self.settings.llm_max_tokens,
-                    thinking=thinking_for(self.settings, "answer"),
-                ):
-                    if isinstance(item, LLMUsage):
-                        usage = item
-                    else:
-                        parts.append(item)
-                        yield {"event": "token", "data": item}
-                span.update(input_tokens=usage.input_tokens, output_tokens=usage.output_tokens)
+            try:
+                with trace.span("generate", model=llm.name) as span:
+                    for item in llm.stream(
+                        SYSTEM_PROMPT,
+                        build_prompt(question, context),
+                        self.settings.llm_max_tokens,
+                        thinking=thinking_for(self.settings, "answer"),
+                    ):
+                        if isinstance(item, LLMUsage):
+                            usage = item
+                        else:
+                            parts.append(item)
+                            yield {"event": "token", "data": item}
+                    span.update(input_tokens=usage.input_tokens, output_tokens=usage.output_tokens)
+            except LLMError as exc:
+                self.tracer.finish(trace, error=exc.to_dict(), partial_answer_chars=sum(map(len, parts)))
+                raise
             answer = self._finalize(question, cfg, "".join(parts), context, rr, usage, usage.stop_reason)
         self._finish(trace, answer)
         yield {"event": "done", "data": answer.to_dict()}

@@ -14,7 +14,7 @@ from codeatlas import __version__
 from codeatlas.eval.dataset import EvalItem, resolve_expected_sources
 from codeatlas.eval.judge import judge_answer
 from codeatlas.eval.metrics import citation_precision, hit_at_k, percentile, recall_at_k, reciprocal_rank
-from codeatlas.llm import LLM, thinking_for
+from codeatlas.llm import LLM, LLMError, thinking_for
 from codeatlas.retrieval.retriever import RetrievalConfig
 
 if TYPE_CHECKING:
@@ -43,6 +43,7 @@ class ItemResult:
     faithfulness: float | None = None
     correct: bool | None = None
     judge_error: str | None = None  # "judge_truncated" or "judge_unparseable": the verdict was not scored
+    error: str | None = None  # an LLM call failed for this question ("kind: ErrorClass: message")
 
 
 def _mean(values: list[float | None]) -> float | None:
@@ -88,6 +89,8 @@ class EvalReport:
             if any(r.faithfulness is not None or r.judge_error for r in answerable):
                 out["judge_truncated"] = sum(1 for r in answerable if r.judge_error == "judge_truncated")
                 out["judge_unparseable"] = sum(1 for r in answerable if r.judge_error == "judge_unparseable")
+        if any(r.error for r in self.items):
+            out["errors"] = sum(1 for r in self.items if r.error)
         return out
 
     def by_category(self) -> dict[str, dict[str, Any]]:
@@ -142,7 +145,11 @@ def evaluate(
         start = time.perf_counter()
         answer = None
         if with_answers:
-            answer = atlas.engine.ask(item.question, cfg)
+            try:
+                answer = atlas.engine.ask(item.question, cfg)
+            except LLMError as exc:  # record it and move on: one throttle must not lose the whole run
+                report.items.append(_failed_item(item, exc))
+                continue
             chunks = [c for c in answer.context if c.kind != "graph"]
         else:
             run_cfg = deep_cfg if deep_cfg and not cfg.graph else cfg
@@ -179,19 +186,37 @@ def evaluate(
                     item.expected_sources, [c.chunk for c in answer.citations]
                 )
                 if judge is not None:
-                    verdict = judge_answer(
-                        judge,
-                        item.question,
-                        answer.answer,
-                        answer.context,
-                        item.reference_answer,
-                        thinking=thinking_for(atlas.settings, "judge"),
-                    )
-                    result.faithfulness = verdict["faithfulness"]
-                    result.correct = verdict["correct"]
-                    result.judge_error = verdict["judge_error"]
+                    try:
+                        verdict = judge_answer(
+                            judge,
+                            item.question,
+                            answer.answer,
+                            answer.context,
+                            item.reference_answer,
+                            thinking=thinking_for(atlas.settings, "judge"),
+                        )
+                    except LLMError as exc:
+                        result.error = f"judge {exc.kind}: {exc.error_class}: {exc.message}"
+                    else:
+                        result.faithfulness = verdict["faithfulness"]
+                        result.correct = verdict["correct"]
+                        result.judge_error = verdict["judge_error"]
         report.items.append(result)
     return report
+
+
+def _failed_item(item: EvalItem, exc: LLMError) -> ItemResult:
+    """A question whose answer call failed: no metrics, the error is kept for the report."""
+    return ItemResult(
+        id=item.id,
+        question=item.question,
+        category=item.category,
+        answerable=item.answerable,
+        latency_ms=0.0,
+        retrieved=[],
+        expected=[e.path + (f"::{e.symbol}" if e.symbol else "") for e in item.expected_sources],
+        error=f"{exc.kind}: {exc.error_class}: {exc.message}",
+    )
 
 
 # --- run metadata ---------------------------------------------------------------------------

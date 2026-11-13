@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from codeatlas import __version__
@@ -48,6 +50,24 @@ def create_app(settings: Settings | None = None, atlas: CodeAtlas | None = None)
 
     app = FastAPI(title="CodeAtlas", version=__version__)
     app.state.atlas = atlas
+
+    @app.middleware("http")
+    async def require_token(request: Request, call_next):
+        """With CODEATLAS_API_TOKEN set, every /api/* route needs `Authorization: Bearer <token>`.
+        The GitHub webhook authenticates with its HMAC signature instead; /health stays open."""
+        path = request.url.path
+        if (
+            settings.api_token
+            and request.method != "OPTIONS"
+            and path.startswith("/api/")
+            and path != "/api/webhook/github"
+        ):
+            scheme, _, token = request.headers.get("authorization", "").partition(" ")
+            if scheme.lower() != "bearer" or not hmac.compare_digest(token.strip(), settings.api_token):
+                return JSONResponse({"detail": "Missing or invalid API token"}, status_code=401)
+        return await call_next(request)
+
+    # Added after the token check so that it wraps it: CORS headers also reach 401 responses.
     app.add_middleware(
         CORSMiddleware, allow_origins=settings.cors_origins, allow_methods=["*"], allow_headers=["*"]
     )
@@ -110,9 +130,17 @@ def create_app(settings: Settings | None = None, atlas: CodeAtlas | None = None)
 
     @app.post("/api/index", status_code=202)
     def index(req: IndexRequest, background: BackgroundTasks) -> dict[str, Any]:
-        repo = req.repo_path or (str(atlas.repo_path) if atlas.repo_path else None)
+        configured = atlas.repo_path
+        repo = req.repo_path or (str(configured) if configured else None)
         if not repo:
             raise HTTPException(400, "repo_path is required (or set CODEATLAS_REPO_PATH)")
+        if not settings.allow_index_any_path and (
+            configured is None or Path(repo).resolve() != Path(configured).resolve()
+        ):
+            # Indexing an arbitrary server path would also expose it through /api/file.
+            raise HTTPException(
+                403, "Only the configured repository can be indexed (set CODEATLAS_ALLOW_INDEX_ANY_PATH to allow others)"
+            )
         background.add_task(atlas.index, repo, force=req.force)
         return {"status": "accepted", "repo_path": repo}
 

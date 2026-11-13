@@ -74,6 +74,13 @@ class Settings(BaseSettings):
 
     # API, webhook and tracing
     cors_origins: list[str] = ["http://localhost:5173"]
+    # Bearer token required on every /api/* route when set (the GitHub webhook uses its HMAC instead).
+    api_token: str | None = None
+    # `codeatlas serve` refuses a non-loopback host without api_token unless this is set, e.g. in a
+    # container whose published port is bound to 127.0.0.1 on the host.
+    allow_unauthenticated: bool = False
+    # POST /api/index may only re-index the configured repository unless this is set.
+    allow_index_any_path: bool = False
     webhook_secret: str | None = None
     webhook_branch: str | None = None
     git_pull_on_webhook: bool = False

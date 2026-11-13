@@ -159,11 +159,31 @@ def serve(
     port: int = typer.Option(8000),
 ) -> None:
     """Run the HTTP API."""
+    settings = _settings(ctx)
+    if not _is_loopback(host) and not settings.api_token and not settings.allow_unauthenticated:
+        typer.secho(
+            f"Refusing to serve on {host} without authentication. Set CODEATLAS_API_TOKEN, bind to 127.0.0.1, "
+            "or set CODEATLAS_ALLOW_UNAUTHENTICATED=true if the port is only reachable locally.",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(2)
+
     import uvicorn
 
     from codeatlas.api.app import create_app
 
-    uvicorn.run(create_app(_settings(ctx)), host=host, port=port)
+    uvicorn.run(create_app(settings), host=host, port=port)
+
+
+def _is_loopback(host: str) -> bool:
+    import ipaddress
+
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 @app.command()

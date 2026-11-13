@@ -89,6 +89,49 @@ def test_webhook_ping(client):
     assert resp.json() == {"status": "pong"}
 
 
+def test_api_token_is_required_when_configured(atlas):
+    atlas.settings.api_token = "t0ken"
+    client = TestClient(create_app(atlas=atlas))
+    assert client.get("/health").status_code == 200  # stays open for health checks
+    assert client.get("/api/stats").status_code == 401
+    assert client.get("/api/stats", headers={"Authorization": "Bearer wrong"}).status_code == 401
+    assert client.get("/api/stats", headers={"Authorization": "Basic t0ken"}).status_code == 401
+    assert client.get("/api/stats", headers={"Authorization": "Bearer t0ken"}).status_code == 200
+    # The webhook keeps its own HMAC authentication.
+    body = b"{}"
+    ping = client.post(
+        "/api/webhook/github", content=body, headers={"X-GitHub-Event": "ping", "X-Hub-Signature-256": sign(body)}
+    )
+    assert ping.json() == {"status": "pong"}
+
+
+def test_index_endpoint_only_reindexes_the_configured_repo(client, atlas, repo, tmp_path):
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "secret.txt").write_text("token=abc", encoding="utf-8")
+    resp = client.post("/api/index", json={"repo_path": str(elsewhere)})
+    assert resp.status_code == 403
+    assert atlas.repo_path.resolve() == repo.resolve()  # the stored root did not move
+    assert client.post("/api/index", json={}).status_code == 202
+    assert client.post("/api/index", json={"repo_path": str(repo)}).status_code == 202
+
+    atlas.settings.allow_index_any_path = True
+    assert TestClient(create_app(atlas=atlas)).post("/api/index", json={"repo_path": str(elsewhere)}).status_code == 202
+
+
+def test_serve_refuses_public_host_without_a_token(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from codeatlas.cli import _is_loopback, app
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("CODEATLAS_API_TOKEN", raising=False)
+    result = CliRunner().invoke(app, ["serve", "--host", "0.0.0.0"])
+    assert result.exit_code == 2 and "Refusing to serve" in result.output
+    assert _is_loopback("127.0.0.1") and _is_loopback("::1") and _is_loopback("localhost")
+    assert not _is_loopback("0.0.0.0") and not _is_loopback("192.168.1.5")
+
+
 def test_webhook_helpers():
     assert verify_signature("k", b"x", "sha256=" + hmac.new(b"k", b"x", hashlib.sha256).hexdigest())
     assert not verify_signature("k", b"x", None)

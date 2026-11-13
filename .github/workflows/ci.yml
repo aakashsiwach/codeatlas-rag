@@ -24,6 +24,8 @@ jobs:
         run: pip install -c requirements-lock.txt -e ".[dev]" pytest-github-actions-annotate-failures
       - name: Lint
         run: ruff check --output-format=github .
+      - name: Makefile targets parse
+        run: make help && make -n check docs
       - name: Test
         if: ${{ !cancelled() }}
         run: pytest -q -p no:cacheprovider -o console_output_style=classic

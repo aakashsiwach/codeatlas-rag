@@ -40,7 +40,8 @@ def judge_answer(
     thinking: str | None = None,
 ) -> dict[str, Any]:
     """Score one answer. thinking is passed to the provider (e.g. "disabled") so that reasoning tokens
-    cannot use up the small output budget. A truncated or unparseable verdict scores None, not 1.0."""
+    cannot use up the small output budget. A truncated verdict is reported as judge_truncated and an
+    unparseable one as judge_unparseable; neither is a score (faithfulness None, never 1.0)."""
     prompt = JUDGE_PROMPT.format(
         context=build_prompt(question, context),
         answer=answer,
@@ -55,7 +56,7 @@ def judge_answer(
     except json.JSONDecodeError:
         data = None
     if truncated or not isinstance(data, dict) or "claims" not in data:
-        error = "truncated" if truncated else "unparseable"
+        error = "judge_truncated" if truncated else "judge_unparseable"
         return {"faithfulness": None, "correct": None, "judge_tokens": tokens, "judge_error": error, "raw": resp.text}
     claims = int(data.get("claims") or 0)
     supported = int(data.get("supported") or 0)

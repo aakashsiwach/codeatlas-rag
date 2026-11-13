@@ -70,9 +70,9 @@ def test_judge_forwards_thinking_and_never_scores_a_bad_verdict_as_faithful():
     assert (verdict["faithfulness"], verdict["correct"], verdict["judge_error"]) == (0.75, True, None)
 
     truncated = judge_answer(FakeLLM('{"claims": 4, "supp', stop_reason="max_tokens"), "q", "a", ctx)
-    assert truncated["faithfulness"] is None and truncated["judge_error"] == "truncated"
+    assert truncated["faithfulness"] is None and truncated["judge_error"] == "judge_truncated"
     garbled = judge_answer(FakeLLM("I think it is mostly right."), "q", "a", ctx)
-    assert garbled["faithfulness"] is None and garbled["judge_error"] == "unparseable"
+    assert garbled["faithfulness"] is None and garbled["judge_error"] == "judge_unparseable"
 
 
 def test_bedrock_request_carries_the_thinking_type():
@@ -208,3 +208,18 @@ def test_bedrock_stream_reports_the_stop_reason():
     assert items[0] == "Partial ans"
     assert items[-1] == LLMUsage(7, 3, "max_tokens")
     assert llm._client.request["additionalModelRequestFields"] == {"thinking": {"type": "disabled"}}
+
+
+def test_eval_counts_truncated_verdicts_and_uses_per_model_judge_thinking(atlas):
+    atlas.settings.llm_model = "judge-model"
+    atlas.settings.thinking_by_model = {"judge-model": {"judge": "between_tools"}}
+    items = load_eval_set(FIXTURE_EVAL)
+    judge = FakeLLM('{"claims": 3, "supp', stop_reason="max_tokens")
+    report = evaluate(atlas, items, RetrievalConfig.parse("hybrid", k=5), judge=judge)
+    summary = report.summary()
+    judged = [r for r in report.items if r.answerable and not r.refused]
+    assert summary["judge_truncated"] == len(judged) > 0 and summary["judge_unparseable"] == 0
+    assert summary["faithfulness"] is None  # truncated verdicts are not scores
+    assert set(judge.thinking) == {"between_tools"}
+    meta = run_metadata(atlas, FIXTURE_EVAL, items, with_answers=True, judge=True)
+    assert meta["judge_thinking"] == "between_tools"

@@ -14,7 +14,7 @@ from codeatlas import __version__
 from codeatlas.eval.dataset import EvalItem, resolve_expected_sources
 from codeatlas.eval.judge import judge_answer
 from codeatlas.eval.metrics import citation_precision, hit_at_k, percentile, recall_at_k, reciprocal_rank
-from codeatlas.llm import LLM
+from codeatlas.llm import LLM, thinking_for
 from codeatlas.retrieval.retriever import RetrievalConfig
 
 if TYPE_CHECKING:
@@ -42,7 +42,7 @@ class ItemResult:
     citation_precision: float | None = None
     faithfulness: float | None = None
     correct: bool | None = None
-    judge_error: str | None = None  # "truncated" or "unparseable": the verdict was not scored
+    judge_error: str | None = None  # "judge_truncated" or "judge_unparseable": the verdict was not scored
 
 
 def _mean(values: list[float | None]) -> float | None:
@@ -86,7 +86,8 @@ class EvalReport:
             out["answer_accuracy"] = round(statistics.fmean(correct), 4) if correct else None
             out["answers_truncated"] = sum(1 for r in self.items if r.answer_truncated)
             if any(r.faithfulness is not None or r.judge_error for r in answerable):
-                out["judge_errors"] = sum(1 for r in answerable if r.judge_error)
+                out["judge_truncated"] = sum(1 for r in answerable if r.judge_error == "judge_truncated")
+                out["judge_unparseable"] = sum(1 for r in answerable if r.judge_error == "judge_unparseable")
         return out
 
     def by_category(self) -> dict[str, dict[str, Any]]:
@@ -129,6 +130,7 @@ def evaluate(
     The deep cutoff never changes the top-k numbers: graph expansion depends on k, so graph configs
     are retrieved a second time at deep_k; other configs rank identically and are retrieved once.
     """
+    with_answers = with_answers or judge is not None  # judging needs answers
     deep_k = deep_k if deep_k and deep_k > cfg.k else None
     deep_cfg = replace(cfg, k=deep_k) if deep_k else None
     report = EvalReport(config=cfg.name, k=cfg.k, deep_k=deep_k)
@@ -183,7 +185,7 @@ def evaluate(
                         answer.answer,
                         answer.context,
                         item.reference_answer,
-                        thinking=atlas.settings.judge_thinking or None,
+                        thinking=thinking_for(atlas.settings, "judge"),
                     )
                     result.faithfulness = verdict["faithfulness"]
                     result.correct = verdict["correct"]
@@ -251,7 +253,8 @@ def run_metadata(
     if with_answers or judge:
         meta["llm"] = f"{settings.llm_provider}:{settings.llm_model}"
         if judge:
-            meta["judge_thinking"] = settings.judge_thinking or "model default"
+            meta["judge_thinking"] = thinking_for(settings, "judge") or "model default"
+            meta["answer_thinking"] = thinking_for(settings, "answer") or "model default"
         meta["min_vector_similarity"] = settings.min_vector_similarity
         meta["min_rerank_confidence"] = settings.min_rerank_confidence
     return meta

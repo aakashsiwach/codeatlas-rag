@@ -106,6 +106,26 @@ class CodeGraph:
                     )
                     graph._members.setdefault(t.qualified_name, []).append(nid)
                     graph._methods_by_name.setdefault(m.name, []).append(nid)
+                # Record accessors and Lombok getters/setters: callers of getTotal() depend on the type even
+                # though the method is not in the source. Generated nodes have no chunk of their own.
+                for name in t.generated_methods:
+                    nid = f"{t.qualified_name}#{name}"
+                    if nid in graph.g:
+                        continue
+                    graph.g.add_node(
+                        nid,
+                        kind="method",
+                        generated=True,
+                        short=f"{short}#{name}",
+                        owner=t.qualified_name,
+                        path=f.path,
+                        line=t.start_line,
+                        endpoints=[],
+                        client_endpoints=[],
+                        path_literals=[],
+                    )
+                    graph._members.setdefault(t.qualified_name, []).append(nid)
+                    graph._methods_by_name.setdefault(name, []).append(nid)
 
         def resolve(simple: str, f: JavaFileFacts, ctx: TypeInfo) -> str | None:
             candidates = graph._by_simple.get(simple)

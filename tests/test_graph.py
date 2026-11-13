@@ -97,3 +97,56 @@ def test_lower_case_words_need_a_code_noun_to_match_a_type(graph):
     assert graph.resolve_mentions("What breaks if I change the customer entity?") == [f"{PKG}.customer.Customer"]
     assert graph.resolve_mentions("Who uses the customer's Redis cache?") == []
     assert graph.resolve_mentions("what about orders in general") == []
+
+
+LOMBOK_ORDER = """package shop;
+import lombok.Data;
+@Data
+public class Order {
+    private static final long MAX = 10;
+    private final String id;
+    private long total;
+    private boolean paid;
+    public long getTotal() { return total * 100; }
+}
+"""
+LOMBOK_LINE = """package shop;
+import lombok.Getter;
+import lombok.Setter;
+public class Line {
+    @Getter private String sku;
+    @Getter @Setter private int qty;
+    private String note;
+}
+"""
+USES = """package shop;
+public class Billing {
+    record Charge(String customer, long amount) {}
+    long bill(Order order, Line line, Charge charge) {
+        order.setTotal(order.getTotal() + charge.amount());
+        return line.getQty() + (order.isPaid() ? 1 : 0);
+    }
+}
+"""
+
+
+def test_generated_accessors_are_parsed():
+    facts = {t.name: t for f in _facts({"shop/Order.java": LOMBOK_ORDER, "shop/Line.java": LOMBOK_LINE, "shop/Billing.java": USES}) for t in f.types}
+    # @Data: getters for every non-static field (isX for primitive boolean), setters for non-final fields;
+    # the explicit getTotal() replaces the generated one.
+    assert facts["Order"].generated_methods == ["getId", "setTotal", "isPaid", "setPaid"]
+    assert facts["Line"].generated_methods == ["getSku", "getQty", "setQty"]  # field-level only
+    assert facts["Charge"].generated_methods == ["customer", "amount"]  # record accessors
+
+
+def test_calls_to_generated_accessors_reach_the_type_in_impact_analysis():
+    graph = CodeGraph.build(_facts({"shop/Order.java": LOMBOK_ORDER, "shop/Line.java": LOMBOK_LINE, "shop/Billing.java": USES}))
+    for target in ("shop.Order#setTotal", "shop.Order#getTotal", "shop.Order#isPaid", "shop.Line#getQty", "shop.Billing.Charge#amount"):
+        assert graph.g.has_edge("shop.Billing#bill", target), target
+    assert graph.g.nodes["shop.Order#setTotal"]["generated"] is True
+    dependents = {h.node for h in graph.impact(["shop.Order"], depth=1)}
+    assert "shop.Billing#bill" in dependents
+
+
+def test_fixture_record_accessors_link_the_controller(graph):
+    assert graph.g.has_edge(f"{PKG}.order.OrderController#placeOrder", f"{PKG}.order.OrderController.PlaceOrderRequest#amountCents")

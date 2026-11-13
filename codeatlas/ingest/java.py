@@ -90,6 +90,8 @@ class TypeInfo:
     fields: dict[str, str] = field(default_factory=dict)  # field name -> simple type
     type_refs: list[str] = field(default_factory=list)
     methods: list[MethodInfo] = field(default_factory=list)
+    # Methods that exist at compile time but not in the source: record accessors and Lombok getters/setters.
+    generated_methods: list[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> TypeInfo:
@@ -332,11 +334,15 @@ def _parse_type(ctx: _Ctx, node: Node, outer: TypeInfo | None) -> None:
             for d in m.named_children:
                 if d.type == "variable_declarator":
                     fields[_text(d.child_by_field_name("name"))] = ftype
+    generated: list[str] = []
     if node.type == "record_declaration":
         params = node.child_by_field_name("parameters")
         for p in params.named_children if params is not None else []:
             if p.type == "formal_parameter":
-                fields[_text(p.child_by_field_name("name"))] = simple_type(_text(p.child_by_field_name("type")))
+                component = _text(p.child_by_field_name("name"))
+                fields[component] = simple_type(_text(p.child_by_field_name("type")))
+                generated.append(component)  # record accessor: point.x()
+    generated += _lombok_accessors(members, {a["name"] for a in annotations})
 
     base_paths = [""]
     for a in annotations:
@@ -369,12 +375,45 @@ def _parse_type(ctx: _Ctx, node: Node, outer: TypeInfo | None) -> None:
             info.methods.append(_parse_method(m, info, base_paths))
         elif m.type in TYPE_KINDS:
             nested.append(m)
+    declared = {m.name for m in info.methods}  # an explicit method replaces the generated one
+    info.generated_methods = [g for g in dict.fromkeys(generated) if g not in declared]
 
     _type_chunks(ctx, info, body, members)
     for method in info.methods:
         _method_chunks(ctx, info, method)
     for n in nested:
         _parse_type(ctx, n, outer=info)
+
+
+_LOMBOK_GETTER = {"Data", "Getter", "Value"}
+_LOMBOK_SETTER = {"Data", "Setter"}
+
+
+def _lombok_accessors(members: list[Node], type_annotations: set[str]) -> list[str]:
+    """Getter/setter names Lombok generates from @Data/@Value/@Getter/@Setter on the type or a field."""
+    out: list[str] = []
+    for m in members:
+        if m.type != "field_declaration":
+            continue
+        modifiers = _child(m, "modifiers")
+        words = set(_text(modifiers).split())
+        if "static" in words:
+            continue
+        field_annotations = {a["name"] for a in _annotations(modifiers)}
+        getter = bool((type_annotations & _LOMBOK_GETTER) or "Getter" in field_annotations)
+        immutable = "final" in words or "Value" in type_annotations
+        setter = not immutable and bool((type_annotations & _LOMBOK_SETTER) or "Setter" in field_annotations)
+        primitive_boolean = _text(m.child_by_field_name("type")) == "boolean"
+        for d in m.named_children:
+            if d.type != "variable_declarator":
+                continue
+            name = _text(d.child_by_field_name("name"))
+            cap = name[:1].upper() + name[1:]
+            if getter:
+                out.append(("is" if primitive_boolean else "get") + cap)
+            if setter:
+                out.append("set" + cap)
+    return out
 
 
 def _parse_method(node: Node, owner: TypeInfo, base_paths: list[str]) -> MethodInfo:

@@ -57,6 +57,7 @@ class EvalReport:
     k: int
     items: list[ItemResult] = field(default_factory=list)
     deep_k: int | None = None  # a second, larger cutoff for recall (e.g. recall@10)
+    warmup_ms: float | None = None  # untimed first retrieval (model loading), excluded from latency
 
     def _recall_columns(self, rows: list[ItemResult]) -> dict[str, Any]:
         out: dict[str, Any] = {f"recall@{self.k}": _mean([r.recall for r in rows])}
@@ -114,6 +115,7 @@ class EvalReport:
     def to_dict(self) -> dict[str, Any]:
         return {
             "summary": self.summary(),
+            "warmup_ms": self.warmup_ms,
             "by_category": self.by_category(),
             "items": [asdict(r) for r in self.items],
         }
@@ -137,6 +139,11 @@ def evaluate(
     deep_k = deep_k if deep_k and deep_k > cfg.k else None
     deep_cfg = replace(cfg, k=deep_k) if deep_k else None
     report = EvalReport(config=cfg.name, k=cfg.k, deep_k=deep_k)
+    # Embedder and reranker load lazily; without a warm-up the first question's latency would include
+    # loading the model (about 20 s for a base-size reranker on CPU) and inflate p95.
+    start = time.perf_counter()
+    atlas.retriever.retrieve("warm-up query: where is the main entry point?", cfg)
+    report.warmup_ms = round((time.perf_counter() - start) * 1000, 1)
     if any(e.symbol and e.definitions is None for item in items for e in item.expected_sources):
         if atlas.repo_path is None:
             raise ValueError("Symbol-level expected sources need the indexed repository; index a repo first")

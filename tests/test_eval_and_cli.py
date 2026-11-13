@@ -223,3 +223,23 @@ def test_eval_counts_truncated_verdicts_and_uses_per_model_judge_thinking(atlas)
     assert set(judge.thinking) == {"between_tools"}
     meta = run_metadata(atlas, FIXTURE_EVAL, items, with_answers=True, judge=True)
     assert meta["judge_thinking"] == "between_tools"
+
+
+def test_model_loading_is_excluded_from_latency(atlas):
+    import time
+
+    class SlowFirstReranker:
+        def __init__(self):
+            self.loaded = False
+
+        def score(self, query, chunks):
+            if not self.loaded:
+                time.sleep(0.4)  # simulated model load on first use
+                self.loaded = True
+            return [0.0] * len(chunks)
+
+    atlas.retriever.reranker = SlowFirstReranker()
+    report = evaluate(atlas, load_eval_set(FIXTURE_EVAL), RetrievalConfig.parse("hybrid+rerank", k=5))
+    assert report.warmup_ms >= 400
+    assert max(r.latency_ms for r in report.items) < 400
+    assert report.to_dict()["warmup_ms"] == report.warmup_ms

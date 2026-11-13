@@ -10,7 +10,7 @@ COPY ui/src ./src
 RUN npx vite build
 
 # --- app: the API and UI (docker compose uses this target) ---------------------------------------
-FROM python:3.11-slim AS app
+FROM python:3.15-slim AS app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

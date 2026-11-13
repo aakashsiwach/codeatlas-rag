@@ -109,14 +109,20 @@ def impact(
     typer.echo(report)
 
 
+DEFAULT_EVAL_CONFIGS = "vector,bm25,hybrid,hybrid+rerank,hybrid+rerank+graph"
+
+
 @app.command("eval")
 def evaluate_cmd(
     ctx: typer.Context,
     eval_set: Path = typer.Argument(..., exists=True, dir_okay=False),
-    configs: str = typer.Option(
-        "vector,bm25,hybrid,hybrid+rerank,hybrid+rerank+graph", help="Comma-separated retrieval configs"
+    configs: Optional[str] = typer.Option(
+        None, help=f"Comma-separated retrieval configs [default: {DEFAULT_EVAL_CONFIGS}]"
     ),
-    k: int = typer.Option(5, "-k"),
+    setup: Optional[str] = typer.Option(
+        None, "--setup", help="Evaluate a named setup (e.g. fast, quality): its mode and k. Excludes --configs"
+    ),
+    k: Optional[int] = typer.Option(None, "-k", help="Chunks per question [default: 5, or the setup's k]"),
     deep_k: Optional[int] = typer.Option(None, "--deep-k", help="Also report recall at this larger cutoff, e.g. 10"),
     option: List[str] = typer.Option(
         [], "--option", "-o", help="Ranking option override for every config, e.g. -o demote_tests=false"
@@ -154,6 +160,16 @@ def evaluate_cmd(
     from codeatlas.retrieval.retriever import RetrievalConfig
 
     atlas = _atlas(ctx)
+    if setup is not None:
+        if configs is not None:
+            raise typer.BadParameter("pass either --setup or --configs", param_hint="--setup")
+        try:
+            setup_cfg = atlas.setup_config(setup)
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc), param_hint="--setup") from exc
+        specs, k = [setup_cfg.name], k or setup_cfg.k
+    else:
+        specs, k = [c.strip() for c in (configs or DEFAULT_EVAL_CONFIGS).split(",") if c.strip()], k or 5
     items = load_eval_set(eval_set)
     with_answers = answers or judge
     judge_llm = atlas.llm if judge else None
@@ -180,7 +196,7 @@ def evaluate_cmd(
             encoding="utf-8",
         )
 
-    for spec in [c.strip() for c in configs.split(",") if c.strip()]:
+    for spec in specs:
         cfg = RetrievalConfig.parse(spec, k=k, **overrides)
         typer.echo(f"evaluating {cfg.name} on {len(items)} questions...")
         reports.append(evaluate(atlas, items, cfg, with_answers=with_answers, judge=judge_llm, deep_k=deep_k))

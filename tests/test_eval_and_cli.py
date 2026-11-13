@@ -368,3 +368,23 @@ def test_offline_llm_returns_a_parseable_judge_verdict():
     block = Chunk(id="c1", path="a/Owner.java", kind="method", text="class Owner {}", embed_text="class Owner {}", start_line=1, end_line=3)
     verdict = judge_answer(OfflineLLM(), "What is Owner?", "Owner is a class [1].", [block])
     assert verdict["judge_error"] is None and verdict["faithfulness"] == 1.0 and verdict["correct"] is None
+
+
+def test_cli_eval_runs_a_named_setup(tmp_path, repo, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CODEATLAS_EMBEDDING_PROVIDER", "hashing")
+    monkeypatch.setenv("CODEATLAS_QDRANT_URL", ":memory:")
+    monkeypatch.setenv("CODEATLAS_RERANKER_MODEL", "")
+    monkeypatch.setenv("CODEATLAS_SETUPS", '{"quality": {"mode": "bm25+graph", "k": 3}}')
+    runner = CliRunner()
+    index_dir = str(tmp_path / "cli-index")
+    assert runner.invoke(app, ["--index-dir", index_dir, "index", str(repo)]).exit_code == 0
+    base = ["--index-dir", index_dir, "eval", str(FIXTURE_EVAL), "--out", str(tmp_path / "results")]
+
+    result = runner.invoke(app, [*base, "--setup", "quality"])
+    assert result.exit_code == 0, result.output
+    assert "| bm25+graph | 3 |" in result.output
+    unknown = runner.invoke(app, [*base, "--setup", "turbo"])
+    assert unknown.exit_code == 2 and "Unknown setup" in unknown.output
+    both = runner.invoke(app, [*base, "--setup", "quality", "--configs", "bm25"])
+    assert both.exit_code == 2

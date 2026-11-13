@@ -17,9 +17,11 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-          cache-dependency-path: pyproject.toml
+          cache-dependency-path: |
+            pyproject.toml
+            requirements-lock.txt
       - name: Install
-        run: pip install -e ".[dev]" pytest-github-actions-annotate-failures
+        run: pip install -c requirements-lock.txt -e ".[dev]" pytest-github-actions-annotate-failures
       - name: Lint
         run: ruff check --output-format=github .
       - name: Test

@@ -156,7 +156,7 @@ The stack is meant to run only for a demo, not 24/7. Run one session like this:
 | Public IPv4 addresses | 3 addresses × 3 h × $0.005 | 0.05 |
 | CloudFront, SSM, ECR, Logs | free tiers / a few MB | ≈ 0 |
 | **Infrastructure** | | **≈ 0.30** |
-| Bedrock | about 2.5k input + 0.5k output tokens per answer: at $3 / $15 per million tokens (an assumed price; use your model's), ≈ $0.015 per question, so 50 questions ≈ $0.75 | usage |
+| Bedrock | about 2.5k input + 0.5k output tokens per answer. At $2 input / $10 output per million tokens (Sonnet 5.5, global cross-region inference, as in `CODEATLAS_LLM_PRICES`), that is ≈ $0.01 per question, so 50 questions ≈ $0.50. Verify current prices on the [Amazon Bedrock pricing page](https://aws.amazon.com/bedrock/pricing/) | usage |
 
 A session like this stays far below the $10 budget. The alert only matters if you forget to destroy the
 stack: at about $0.10/hour, it fires within roughly four days.

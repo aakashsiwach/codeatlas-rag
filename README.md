@@ -219,25 +219,41 @@ codeatlas eval eval/petclinic-test.yaml -k 5 --deep-k 10 --configs vector,hybrid
 
 ### Results
 
-Fill this in from the reports above. These are measured numbers, not estimates.
+Held-out test split, retrieval only (no LLM calls). Measured numbers from
+`results/eval-20261113-183425` (baseline) and `results/eval-20261113-174905` (fast, quality).
 
-**Run details:** PetClinic `500158f` · CodeAtlas `–` · embeddings `–` · reranker `–` · LLM `–` · k = 5 ·
-index build: `–` files, `–` chunks, `–` s, $`–`
+**Run details:** PetClinic `500158f` · CodeAtlas `72143e2` · embeddings `BAAI/bge-small-en-v1.5` (local) ·
+reranker `Alibaba-NLP/gte-reranker-modernbert-base` (quality only) · k = 5 · index build: 83 files,
+327 AST chunks in 128 s (naive: 188 chunks in 93 s), $0 (local embeddings) · CPU only
 
-| # | Chunking | Retrieval | recall@5 | hit@5 | MRR | p50 latency |
+| Setup | Config | recall@5 | recall@10 | hit@5 | MRR | p50 latency |
 |---|---|---|---|---|---|---|
-| 1 | naive | vector | – | – | – | – |
-| 2 | AST | vector | – | – | – | – |
-| 3 | AST | + BM25 (hybrid) | – | – | – | – |
-| 4 | AST | + reranker | – | – | – | – |
-| 5 | AST | + code graph | – | – | – | – |
+| baseline | naive fixed-size chunks, `vector` | 0.704 | 0.904 | 0.850 | 0.627 | 25 ms |
+| fast | AST chunks, `vector`, threshold 0.6177 | 0.713 | 0.850 | 0.800 | 0.554 | 35 ms |
+| quality | AST chunks, `hybrid+rerank+graph`, ModernBERT over 20 candidates, 2 graph slots, threshold 0.868 | 0.812 | 0.887 | 0.900 | 0.702 | 32.7 s |
 
-**Recall@5 by category** (rows 2–5): paste the category table from the report.
+All three use the same ranking defaults (test code below main code, class outlines below their methods);
+the frozen configs are described in [Frozen setups](#frozen-setups), and the baseline is the
+pre-declared step 1 above, untuned.
 
-**Answer quality** (best setup, mean of runs): faithfulness `–` · citation precision `–` · refusal accuracy `–`
+**Recall@5 by category**
 
-**Failure analysis:** two or three concrete examples from the weakest-questions section, such as a question
-the graph answers that vector search misses.
+| category (test questions) | baseline | fast | quality |
+|---|---|---|---|
+| config (2) | 0.500 | 0.500 | 0.500 |
+| endpoint (3) | 1.000 | 0.667 | 1.000 |
+| endpoint-callers (2) | 1.000 | 1.000 | 1.000 |
+| flow (4) | 0.875 | 0.750 | 0.750 |
+| impact (5) | 0.417 | 0.650 | 0.850 |
+| locate (3) | 0.667 | 0.667 | 0.667 |
+| model (1) | 0.500 | 1.000 | 1.000 |
+
+The test split has 24 questions (20 answerable, 1-5 per category), so per-category numbers are indicative
+only.
+
+**Answer quality** (quality setup, mean of 2-3 judged runs): pending.
+
+**Failure analysis:** pending, with the judged runs.
 
 ## HTTP API
 

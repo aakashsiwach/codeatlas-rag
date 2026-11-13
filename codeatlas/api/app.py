@@ -115,6 +115,9 @@ def create_app(settings: Settings | None = None, atlas: CodeAtlas | None = None)
         target = (root / path).resolve()
         if not target.is_relative_to(root) or not target.is_file():
             raise HTTPException(404, "File not found")
+        # Only files that were indexed can be viewed: never .env, .git/config or other unindexed files.
+        if target.relative_to(root).as_posix() not in atlas.store.file_hashes():
+            raise HTTPException(404, "File not found")
         lines = target.read_text(encoding="utf-8", errors="replace").splitlines()
         lo = max(1, start or 1)
         hi = min(len(lines), end or len(lines))

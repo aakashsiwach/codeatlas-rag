@@ -58,6 +58,19 @@ def test_file_viewer(client):
     assert client.get("/api/file", params={"path": "../../etc/passwd"}).status_code == 404
 
 
+def test_file_viewer_serves_only_indexed_files(client, repo, tmp_path):
+    (repo / ".env").write_text("CODEATLAS_API_TOKEN=secret", encoding="utf-8")
+    (repo / "notes.bin").write_text("not indexed", encoding="utf-8")
+    outside = tmp_path / "outside.txt"
+    outside.write_text("outside", encoding="utf-8")
+    for path in (".env", "notes.bin", str(outside), f"{JAVA_ROOT}/../../../../../outside.txt"):
+        assert client.get("/api/file", params={"path": path}).status_code == 404, path
+    # Equivalent spellings of an indexed path still work.
+    rel = f"{JAVA_ROOT}/order/OrderController.java"
+    assert client.get("/api/file", params={"path": f"./{JAVA_ROOT}/order/../order/OrderController.java"}).status_code == 200
+    assert client.get("/api/file", params={"path": rel}).json()["total_lines"] > 0
+
+
 def test_webhook_reindexes_changed_files(client, atlas, repo):
     rel = f"{JAVA_ROOT}/payment/PaymentService.java"
     path = repo / rel

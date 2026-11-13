@@ -38,6 +38,7 @@ class ItemResult:
     reciprocal_rank: float | None = None
     answer: str | None = None
     refused: bool | None = None
+    answer_truncated: bool | None = None  # the answer hit the output limit
     citation_precision: float | None = None
     faithfulness: float | None = None
     correct: bool | None = None
@@ -83,6 +84,7 @@ class EvalReport:
             out["faithfulness"] = _mean([r.faithfulness for r in answerable])
             correct = [float(r.correct) for r in answerable if r.correct is not None]
             out["answer_accuracy"] = round(statistics.fmean(correct), 4) if correct else None
+            out["answers_truncated"] = sum(1 for r in self.items if r.answer_truncated)
             if any(r.faithfulness is not None or r.judge_error for r in answerable):
                 out["judge_errors"] = sum(1 for r in answerable if r.judge_error)
         return out
@@ -169,6 +171,7 @@ def evaluate(
         if answer is not None:
             result.answer = answer.answer
             result.refused = answer.refused
+            result.answer_truncated = answer.truncated
             if item.answerable and not answer.refused:
                 result.citation_precision = citation_precision(
                     item.expected_sources, [c.chunk for c in answer.citations]

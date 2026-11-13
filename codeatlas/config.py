@@ -65,6 +65,12 @@ class Settings(BaseSettings):
     # "disabled" works for most models; some newer ones reject it and turn thinking off with another
     # value (check the provider docs). Empty string sends nothing and keeps the model default.
     judge_thinking: str = "disabled"
+    # Thinking type for answer generation. Empty keeps the model default; thinking tokens count against
+    # llm_max_tokens, so a long think can truncate the visible answer (reported as `truncated`).
+    answer_thinking: str = ""
+    # Per-model overrides, as JSON: {"<model id>": {"answer": "<type>", "judge": "<type>"}}. They win over
+    # answer_thinking / judge_thinking for that model, since valid values differ between models.
+    thinking_by_model: dict[str, dict[str, str]] = {}
 
     # Retrieval defaults and hallucination controls
     default_mode: str = "hybrid+graph"

@@ -205,3 +205,42 @@ def test_citations_ignore_code_and_accept_lists_and_ranges():
     assert valid == [1, 2, 3, 5, 6, 7] and invalid == [8, 99]
     assert extract_citations("[2][4]", 5) == ([2, 4], [])
     assert count_uncited_sentences("It is validated against the owner's pets [2, 3].") == 0
+
+
+def test_truncated_answers_are_flagged_in_ask_stream_and_eval(settings, repo):
+    from codeatlas.eval.dataset import load_eval_set
+    from codeatlas.eval.runner import evaluate
+    from conftest import FIXTURE_EVAL
+
+    llm = FakeLLM("The retry logic lives in PaymentService.charge [1] and then it", stop_reason="max_tokens")
+    atlas = CodeAtlas(settings, embedder=HashingEmbedder(), llm=llm)
+    atlas.index(repo)
+    answer = atlas.ask("Where is the payment retry logic?", mode="hybrid", k=5)
+    assert answer.truncated and answer.stop_reason == "max_tokens" and answer.to_dict()["truncated"]
+
+    done = [e for e in atlas.ask_stream("Where is the payment retry logic?", mode="hybrid", k=5) if e["event"] == "done"]
+    assert done[0]["data"]["truncated"] is True
+
+    report = evaluate(atlas, load_eval_set(FIXTURE_EVAL), RetrievalConfig.parse("hybrid", k=5), with_answers=True)
+    assert report.summary()["answers_truncated"] == 4  # the fake LLM answers every question
+    assert all(r.answer_truncated for r in report.items)
+
+
+def test_answer_thinking_resolves_per_model(settings):
+    from codeatlas.llm import thinking_for
+
+    s = settings.model_copy(update={"llm_model": "model-a", "answer_thinking": "", "judge_thinking": "disabled"})
+    assert thinking_for(s, "answer") is None and thinking_for(s, "judge") == "disabled"
+    s = s.model_copy(update={"thinking_by_model": {"model-a": {"answer": "between_tools", "judge": ""}}})
+    assert thinking_for(s, "answer") == "between_tools"
+    assert thinking_for(s, "judge") is None  # explicit empty override: send nothing for this model
+    assert thinking_for(s.model_copy(update={"llm_model": "model-b"}), "judge") == "disabled"
+
+
+def test_answer_calls_send_the_configured_thinking(settings, repo):
+    llm = FakeLLM("PaymentService.charge retries [1].")
+    atlas = CodeAtlas(settings.model_copy(update={"answer_thinking": "disabled"}), embedder=HashingEmbedder(), llm=llm)
+    atlas.index(repo)
+    atlas.ask("Where is the payment retry logic?", mode="hybrid", k=5)
+    list(atlas.ask_stream("Where is the payment retry logic?", mode="hybrid", k=5))
+    assert llm.thinking == ["disabled", "disabled"]

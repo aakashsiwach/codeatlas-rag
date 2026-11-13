@@ -182,3 +182,29 @@ def test_cli_index_impact_and_search(tmp_path, repo, monkeypatch):
     data = json.loads(next(out.glob("eval-*.json")).read_text(encoding="utf-8"))
     assert data["metadata"]["questions"] == 4
     assert [r["summary"]["config"] for r in data["reports"]] == ["bm25", "bm25+graph"]
+
+
+def test_bedrock_stream_reports_the_stop_reason():
+    pytest.importorskip("boto3")
+    from codeatlas.llm import BedrockLLM, LLMUsage
+
+    class Stub:
+        def __init__(self):
+            self.request = None
+
+        def converse_stream(self, **request):
+            self.request = request
+            return {
+                "stream": [
+                    {"contentBlockDelta": {"delta": {"text": "Partial ans"}}},
+                    {"messageStop": {"stopReason": "max_tokens"}},
+                    {"metadata": {"usage": {"inputTokens": 7, "outputTokens": 3}}},
+                ]
+            }
+
+    llm = BedrockLLM("some-model", region="us-east-1")
+    llm._client = Stub()
+    items = list(llm.stream("s", "p", 10, thinking="disabled"))
+    assert items[0] == "Partial ans"
+    assert items[-1] == LLMUsage(7, 3, "max_tokens")
+    assert llm._client.request["additionalModelRequestFields"] == {"thinking": {"type": "disabled"}}

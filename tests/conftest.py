@@ -30,13 +30,14 @@ class FakeLLM:
         self.thinking.append(thinking)
         return LLMResponse(self.reply, LLMUsage(100, 20), self.stop_reason)
 
-    def stream(self, system, prompt, max_tokens):
+    def stream(self, system, prompt, max_tokens, thinking=None):
         self.calls += 1
         self.prompts.append(prompt)
+        self.thinking.append(thinking)
         words = self.reply.split(" ")
         for i, word in enumerate(words):
             yield word if i == len(words) - 1 else word + " "
-        yield LLMUsage(100, 20)
+        yield LLMUsage(100, 20, self.stop_reason)
 
 
 @pytest.fixture

@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from codeatlas.config import Settings
-from codeatlas.llm import LLM, LLMUsage
+from codeatlas.llm import LLM, LLMUsage, is_truncated, thinking_for
 from codeatlas.models import Chunk
 from codeatlas.retrieval.retriever import RetrievalConfig, RetrievalResult, Retriever
 from codeatlas.tracing import Trace, Tracer
@@ -81,6 +81,8 @@ class Answer:
     uncited_sentences: int = 0
     usage: dict[str, Any] = field(default_factory=dict)
     trace_id: str | None = None
+    stop_reason: str | None = None
+    truncated: bool = False  # the model hit the output limit: the answer is cut off
     context: list[Chunk] = field(default_factory=list, repr=False)
 
     def to_dict(self) -> dict[str, Any]:
@@ -97,6 +99,8 @@ class Answer:
             "uncited_sentences": self.uncited_sentences,
             "usage": self.usage,
             "trace_id": self.trace_id,
+            "stop_reason": self.stop_reason,
+            "truncated": self.truncated,
         }
 
 
@@ -212,9 +216,14 @@ class AnswerEngine:
         else:
             llm = self.llm_factory()
             with trace.span("generate", model=llm.name) as span:
-                resp = llm.complete(SYSTEM_PROMPT, build_prompt(question, context), self.settings.llm_max_tokens)
+                resp = llm.complete(
+                    SYSTEM_PROMPT,
+                    build_prompt(question, context),
+                    self.settings.llm_max_tokens,
+                    thinking=thinking_for(self.settings, "answer"),
+                )
                 span.update(input_tokens=resp.usage.input_tokens, output_tokens=resp.usage.output_tokens)
-            answer = self._finalize(question, cfg, resp.text, context, rr, resp.usage)
+            answer = self._finalize(question, cfg, resp.text, context, rr, resp.usage, resp.stop_reason)
         self._finish(trace, answer)
         return answer
 
@@ -237,14 +246,19 @@ class AnswerEngine:
             parts: list[str] = []
             usage = LLMUsage()
             with trace.span("generate", model=llm.name) as span:
-                for item in llm.stream(SYSTEM_PROMPT, build_prompt(question, context), self.settings.llm_max_tokens):
+                for item in llm.stream(
+                    SYSTEM_PROMPT,
+                    build_prompt(question, context),
+                    self.settings.llm_max_tokens,
+                    thinking=thinking_for(self.settings, "answer"),
+                ):
                     if isinstance(item, LLMUsage):
                         usage = item
                     else:
                         parts.append(item)
                         yield {"event": "token", "data": item}
                 span.update(input_tokens=usage.input_tokens, output_tokens=usage.output_tokens)
-            answer = self._finalize(question, cfg, "".join(parts), context, rr, usage)
+            answer = self._finalize(question, cfg, "".join(parts), context, rr, usage, usage.stop_reason)
         self._finish(trace, answer)
         yield {"event": "done", "data": answer.to_dict()}
 
@@ -318,6 +332,7 @@ class AnswerEngine:
         context: list[Chunk],
         rr: RetrievalResult,
         usage: LLMUsage,
+        stop_reason: str | None = None,
     ) -> Answer:
         valid, invalid = extract_citations(text, len(context))
         cost = (
@@ -335,6 +350,8 @@ class AnswerEngine:
             refused=is_refusal(text),
             invalid_citations=invalid,
             uncited_sentences=count_uncited_sentences(text),
+            stop_reason=stop_reason,
+            truncated=is_truncated(stop_reason),
             usage={
                 "input_tokens": usage.input_tokens,
                 "output_tokens": usage.output_tokens,
@@ -352,5 +369,6 @@ class AnswerEngine:
             citations=len(answer.citations),
             invalid_citations=answer.invalid_citations,
             uncited_sentences=answer.uncited_sentences,
+            truncated=answer.truncated,
             **answer.usage,
         )

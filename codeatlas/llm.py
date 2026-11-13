@@ -17,6 +17,7 @@ class LLMNotConfiguredError(RuntimeError):
 class LLMUsage:
     input_tokens: int = 0
     output_tokens: int = 0
+    stop_reason: str | None = None  # set on the final item of a stream
 
 
 @dataclass
@@ -26,6 +27,21 @@ class LLMResponse:
     stop_reason: str | None = None  # normalised: "end_turn", "max_tokens", or the provider's value
 
 
+def is_truncated(stop_reason: str | None) -> bool:
+    return stop_reason == "max_tokens"
+
+
+def thinking_for(settings: Settings, role: str) -> str | None:
+    """Thinking type to send for a role ("answer" or "judge") with the configured model.
+
+    CODEATLAS_THINKING_BY_MODEL (per model id, per role) wins over the global setting
+    (CODEATLAS_ANSWER_THINKING / CODEATLAS_JUDGE_THINKING). Empty means "send nothing, use the
+    model's default"."""
+    per_model = settings.thinking_by_model.get(settings.llm_model or "", {})
+    value = per_model.get(role) if role in per_model else getattr(settings, f"{role}_thinking")
+    return value or None
+
+
 class LLM(Protocol):
     name: str
 
@@ -33,8 +49,10 @@ class LLM(Protocol):
         """thinking: None keeps the model's default; otherwise sent as the thinking type (e.g. "disabled")."""
         ...
 
-    def stream(self, system: str, prompt: str, max_tokens: int) -> Iterator[str | LLMUsage]:
-        """Yield text deltas, then a final LLMUsage."""
+    def stream(
+        self, system: str, prompt: str, max_tokens: int, thinking: str | None = None
+    ) -> Iterator[str | LLMUsage]:
+        """Yield text deltas, then a final LLMUsage carrying the stop reason."""
         ...
 
 
@@ -60,16 +78,20 @@ class AnthropicLLM:
         text = "".join(block.text for block in msg.content if block.type == "text")
         return LLMResponse(text, LLMUsage(msg.usage.input_tokens, msg.usage.output_tokens), msg.stop_reason)
 
-    def stream(self, system: str, prompt: str, max_tokens: int) -> Iterator[str | LLMUsage]:
+    def stream(
+        self, system: str, prompt: str, max_tokens: int, thinking: str | None = None
+    ) -> Iterator[str | LLMUsage]:
+        extra = {"thinking": {"type": thinking}} if thinking else {}
         with self._client.messages.stream(
             model=self.model,
             max_tokens=max_tokens,
             system=system,
             messages=[{"role": "user", "content": prompt}],
+            **extra,
         ) as stream:
             yield from stream.text_stream
             final = stream.get_final_message()
-        yield LLMUsage(final.usage.input_tokens, final.usage.output_tokens)
+        yield LLMUsage(final.usage.input_tokens, final.usage.output_tokens, final.stop_reason)
 
 
 class OpenAILLM:
@@ -97,8 +119,11 @@ class OpenAILLM:
             {"length": "max_tokens", "stop": "end_turn"}.get(finish, finish),
         )
 
-    def stream(self, system: str, prompt: str, max_tokens: int) -> Iterator[str | LLMUsage]:
+    def stream(
+        self, system: str, prompt: str, max_tokens: int, thinking: str | None = None
+    ) -> Iterator[str | LLMUsage]:
         usage = LLMUsage()
+        finish: str | None = None
         stream = self._client.chat.completions.create(
             model=self.model,
             messages=self._messages(system, prompt),
@@ -108,8 +133,11 @@ class OpenAILLM:
         for event in stream:
             if event.usage:
                 usage = LLMUsage(event.usage.prompt_tokens, event.usage.completion_tokens)
+            if event.choices and event.choices[0].finish_reason:
+                finish = event.choices[0].finish_reason
             if event.choices and event.choices[0].delta.content:
                 yield event.choices[0].delta.content
+        usage.stop_reason = {"length": "max_tokens", "stop": "end_turn"}.get(finish, finish) if finish else None
         yield usage
 
 
@@ -144,17 +172,23 @@ class BedrockLLM:
             text, LLMUsage(usage.get("inputTokens", 0), usage.get("outputTokens", 0)), resp.get("stopReason")
         )
 
-    def stream(self, system: str, prompt: str, max_tokens: int) -> Iterator[str | LLMUsage]:
-        resp = self._client.converse_stream(**self._request(system, prompt, max_tokens))
+    def stream(
+        self, system: str, prompt: str, max_tokens: int, thinking: str | None = None
+    ) -> Iterator[str | LLMUsage]:
+        resp = self._client.converse_stream(**self._request(system, prompt, max_tokens, thinking))
         usage = LLMUsage()
+        stop_reason: str | None = None
         for event in resp["stream"]:
             if "contentBlockDelta" in event:
                 text = event["contentBlockDelta"]["delta"].get("text")
                 if text:
                     yield text
+            elif "messageStop" in event:
+                stop_reason = event["messageStop"].get("stopReason")
             elif "metadata" in event:
                 u = event["metadata"].get("usage", {})
                 usage = LLMUsage(u.get("inputTokens", 0), u.get("outputTokens", 0))
+        usage.stop_reason = stop_reason
         yield usage
 
 

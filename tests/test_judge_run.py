@@ -7,6 +7,7 @@ from conftest import FIXTURE_EVAL
 from typer.testing import CliRunner
 
 from codeatlas.cli import app
+from codeatlas.eval.judge_run import summarize
 
 PRICES = '{"fake:offline": {"input_per_mtok": 1000, "output_per_mtok": 1000}}'  # inflated, so budgets bite
 
@@ -87,5 +88,7 @@ def test_judge_summary_over_judged_runs(cli, tmp_path):
 
     retrieval_only = tmp_path / "plain"
     cli("eval", str(FIXTURE_EVAL), "--setup", "quality", "--out", str(retrieval_only))
-    plain = cli("judge-summary", *[str(p) for p in retrieval_only.glob("eval-*.json")])
-    assert plain.exit_code == 2 and "--judge" in plain.output
+    plain = [p for p in retrieval_only.glob("eval-*.json")]
+    assert cli("judge-summary", *map(str, plain)).exit_code == 2  # the message itself is wrapped by rich
+    with pytest.raises(ValueError, match="--judge"):
+        summarize(plain)

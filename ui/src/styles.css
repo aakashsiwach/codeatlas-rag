@@ -144,6 +144,23 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .composer button:disabled { opacity: 0.45; cursor: default; }
 .composer button.secondary { background: var(--line); color: var(--ink); }
+.setup-switch { display: flex; align-self: center; border: 1px solid var(--line); border-radius: 999px; padding: 3px; background: var(--bg); }
+.composer .setup-switch button {
+  background: none; color: var(--muted); padding: 6px 12px; border-radius: 999px; font-weight: 550;
+  font-family: var(--mono); font-size: 13px; min-height: 30px;
+}
+.composer .setup-switch button.on { background: var(--accent); color: #fff; }
+.composer .setup-switch button:not(.on):hover:not(:disabled) { color: var(--ink); }
+
+.progress { padding: 4px 0; display: grid; gap: 8px; }
+.progress-head { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; }
+.progress-head .elapsed { font-family: var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.progress-track { height: 6px; border-radius: 999px; background: var(--accent-soft); overflow: hidden; }
+.progress-bar { height: 100%; background: var(--accent); border-radius: 999px; transition: width 0.25s linear; }
+@media (max-width: 640px) {
+  .composer { flex-wrap: wrap; }
+  .setup-switch { order: -1; }
+}
 
 .viewer {
   grid-column: 2; grid-row: 1 / span 3; display: flex; flex-direction: column; min-width: 0;

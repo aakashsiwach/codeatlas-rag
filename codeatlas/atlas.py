@@ -117,6 +117,14 @@ class CodeAtlas:
     def config(self, mode: str | None = None, k: int | None = None) -> RetrievalConfig:
         return RetrievalConfig.parse(mode or self.settings.default_mode, k=k or self.settings.default_k)
 
+    def setup_config(self, name: str) -> RetrievalConfig:
+        """The retrieval config of a named setup (settings.setups), e.g. "fast" or "quality"."""
+        setup = self.settings.setups.get(name)
+        if setup is None:
+            known = ", ".join(sorted(self.settings.setups)) or "none"
+            raise ValueError(f"Unknown setup {name!r}; known setups: {known}")
+        return RetrievalConfig.parse(str(setup["mode"]), k=int(setup.get("k") or self.settings.default_k))
+
     def retrieve(self, question: str, mode: str | None = None, k: int | None = None) -> RetrievalResult:
         return self.retriever.retrieve(question, self.config(mode, k))
 

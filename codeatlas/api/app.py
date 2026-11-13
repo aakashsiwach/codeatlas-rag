@@ -29,6 +29,7 @@ class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=4000)
     mode: str | None = Field(default=None, description="e.g. hybrid, hybrid+rerank+graph")
     k: int | None = Field(default=None, ge=1, le=30)
+    setup: str | None = Field(default=None, description="a named setup, e.g. fast or quality; instead of mode/k")
 
 
 class IndexRequest(BaseModel):
@@ -84,6 +85,23 @@ def create_app(settings: Settings | None = None, atlas: CodeAtlas | None = None)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
 
+    def resolve(req: AskRequest):
+        """(setup name or None, retrieval config) for a request: a named setup, or mode/k."""
+        if req.setup is None:
+            return None, config(req.mode, req.k)
+        if req.mode is not None or req.k is not None:
+            raise HTTPException(400, "Pass either a setup or mode/k, not both")
+        try:
+            return req.setup, atlas.setup_config(req.setup)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    def labelled(events, setup: str | None):
+        for event in events:
+            if event["event"] in ("sources", "done"):
+                event["data"]["setup"] = setup
+            yield event
+
     @app.get("/health")
     def health() -> dict[str, Any]:
         return {"status": "ok", "version": __version__}
@@ -113,6 +131,9 @@ def create_app(settings: Settings | None = None, atlas: CodeAtlas | None = None)
                 "rerank": atlas.engine.threshold_for("rerank"),
             },
             "auth_required": bool(settings.api_token),
+            "setups": {name: {"mode": atlas.setup_config(name).name, "k": atlas.setup_config(name).k}
+                       for name in settings.setups},
+            "default_setup": settings.default_setup,
         }
 
     @app.get("/api/stats")
@@ -121,9 +142,9 @@ def create_app(settings: Settings | None = None, atlas: CodeAtlas | None = None)
 
     @app.post("/api/ask")
     def ask(req: AskRequest) -> dict[str, Any]:
-        cfg = config(req.mode, req.k)
+        setup, cfg = resolve(req)
         try:
-            return atlas.engine.ask(req.question, cfg).to_dict()
+            return {**atlas.engine.ask(req.question, cfg).to_dict(), "setup": setup}
         except LLMNotConfiguredError as exc:
             raise HTTPException(503, str(exc)) from exc
         except LLMError as exc:
@@ -132,8 +153,9 @@ def create_app(settings: Settings | None = None, atlas: CodeAtlas | None = None)
 
     @app.post("/api/ask/stream")
     def ask_stream(req: AskRequest) -> StreamingResponse:
-        cfg = config(req.mode, req.k)
-        return StreamingResponse(_sse(atlas.engine.ask_stream(req.question, cfg)), media_type="text/event-stream")
+        setup, cfg = resolve(req)
+        events = labelled(atlas.engine.ask_stream(req.question, cfg), setup)
+        return StreamingResponse(_sse(events), media_type="text/event-stream")
 
     @app.get("/api/impact")
     def impact(symbol: str, depth: int = 3) -> dict[str, Any]:

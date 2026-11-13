@@ -259,13 +259,14 @@ only.
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/api/ask` | `{"question", "mode"?, "k"?}` → answer, citations, sources, confidence, usage, trace id |
+| `POST` | `/api/ask` | `{"question", "setup"?}` (`fast` or `quality`) or `{"question", "mode"?, "k"?}` → answer, citations, sources, confidence, usage, setup, timings (retrieval and total ms), trace id |
 | `POST` | `/api/ask/stream` | Same, as server-sent events: `sources`, `token`..., `done` |
 | `GET` | `/api/impact?symbol=Owner&depth=3` | Dependents of a class or method from the code graph |
 | `GET` | `/api/file?path=...&start=&end=` | Source lines for the citation viewer (path-traversal safe) |
 | `POST` | `/api/index` | `{"repo_path"?, "force"?}` — start an index run in the background |
 | `GET` | `/api/index/runs` | Index run history: files changed, chunks, tokens, cost, duration |
 | `POST` | `/api/webhook/github` | GitHub push webhook (HMAC-verified) → targeted re-index |
+| `GET` | `/api/config` | The active setup for the UI: named setups, models, thresholds (no secrets) |
 | `GET` | `/api/stats`, `/health` | Index and graph statistics, liveness |
 
 ### Incremental indexing via webhook
@@ -280,9 +281,12 @@ only.
 
 `ui/` is a React + TypeScript chat client (Vite) for the HTTP API: answers stream in token by token,
 numbered citations open a source viewer with the cited lines highlighted, low-confidence questions show a
-"don't know" card with the closest matches, and a settings panel shows the active setup (mode, k,
-embeddings, reranker, LLM, refusal thresholds, ranking options) and lets you change the mode and k for the
-session or enter an API token.
+"don't know" card with the closest matches, and a settings panel shows the active setup (setups,
+embeddings, reranker, LLM, refusal thresholds, ranking options) and takes an API token. A switch next to
+the question box picks the setup per question: `fast` (the default) or `quality`, sent to the API as
+`setup`. Each answer shows the setup it used and its retrieval and total latency, and a `quality` question
+shows a progress bar while it retrieves (about 30 s on CPU). A custom mode and k in Settings override the
+switch for experiments.
 
 ```bash
 codeatlas serve --port 8000          # the API (Node 18+ for the UI)

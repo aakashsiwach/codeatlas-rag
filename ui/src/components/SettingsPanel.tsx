@@ -1,7 +1,8 @@
 import type { ActiveConfig } from "../api";
 
 export interface Settings {
-  mode: string; // empty: the server default
+  setup: string; // named setup (fast, quality); empty: the server default
+  mode: string; // custom mode, overriding the setup; empty: none
   k: number; // 0: the server default
   token: string;
 }
@@ -12,9 +13,9 @@ const PRESETS = ["vector", "hybrid", "hybrid+graph", "hybrid+rerank", "hybrid+re
 export function loadSettings(): Settings {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? "{}");
-    return { mode: saved.mode ?? "", k: saved.k ?? 0, token: saved.token ?? "" };
+    return { setup: saved.setup ?? "", mode: saved.mode ?? "", k: saved.k ?? 0, token: saved.token ?? "" };
   } catch {
-    return { mode: "", k: 0, token: "" };
+    return { setup: "", mode: "", k: 0, token: "" };
   }
 }
 
@@ -56,13 +57,13 @@ export function SettingsPanel({ config, settings, onChange, onClose }: Props) {
 
         <h3>This session</h3>
         <label>
-          Retrieval mode
+          Custom retrieval mode (overrides fast/quality)
           <select
             value={settings.mode}
             onChange={(e) => onChange({ ...settings, mode: e.target.value })}
             data-testid="mode-select"
           >
-            <option value="">Server default{config ? ` (${config.default_mode})` : ""}</option>
+            <option value="">None: use the fast/quality switch</option>
             {presets.map((m) => (
               <option key={m} value={m}>
                 {m}
@@ -79,7 +80,7 @@ export function SettingsPanel({ config, settings, onChange, onClose }: Props) {
             value={settings.k}
             onChange={(e) => onChange({ ...settings, k: Math.max(0, Math.min(30, Number(e.target.value) || 0)) })}
           />
-          <span className="hint">0 uses the server default{config ? ` (${config.default_k})` : ""}</span>
+          <span className="hint">0 uses the setup's k</span>
         </label>
         <label>
           API token
@@ -96,7 +97,14 @@ export function SettingsPanel({ config, settings, onChange, onClose }: Props) {
         {config ? (
           <dl className="setup">
             <Row label="Repository" value={config.repo} />
-            <Row label="Default mode" value={`${config.default_mode} · k=${config.default_k}`} />
+            {Object.entries(config.setups ?? {}).map(([name, s]) => (
+              <Row
+                key={name}
+                label={`Setup: ${name}${name === config.default_setup ? " (default)" : ""}`}
+                value={`${s.mode} · k=${s.k}`}
+              />
+            ))}
+            <Row label="CLI default mode" value={`${config.default_mode} · k=${config.default_k}`} />
             <Row label="Chunker" value={config.chunker} />
             <Row label="Embeddings" value={config.embedder} />
             <Row label="Reranker" value={config.reranker ?? "off"} />

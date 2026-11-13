@@ -89,6 +89,12 @@ class Settings(BaseSettings):
     # Per-model refusal thresholds, as JSON {"<embedder name or reranker model>": <threshold>}; they override
     # the two above for that model. Calibrate them on a dev split with `codeatlas eval --calibrate`.
     # Defaults calibrated on dev for the two frozen setups.
+    # Named setups the API and UI offer per question; the two frozen on dev (README, "Frozen setups").
+    setups: dict[str, dict[str, str | int]] = {
+        "fast": {"mode": "vector", "k": 5},
+        "quality": {"mode": "hybrid+rerank+graph", "k": 5},
+    }
+    default_setup: str = "fast"
     min_confidence_by_model: dict[str, float] = {
         "local:BAAI/bge-small-en-v1.5": 0.6177,
         "Alibaba-NLP/gte-reranker-modernbert-base": 0.868,

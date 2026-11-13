@@ -38,6 +38,8 @@ describe("Message", () => {
     const turn: Turn = {
       id: 1,
       question: "q",
+      setup: "fast",
+      startedAt: 0,
       status: "done",
       text: "Owners are saved [1] and pets too [2]; see [9].",
       sources,
@@ -54,6 +56,8 @@ describe("Message", () => {
     const turn: Turn = {
       id: 2,
       question: "How are Kafka offsets committed?",
+      setup: "fast",
+      startedAt: 0,
       status: "done",
       text: "I don't know based on the indexed code.",
       sources: [source(1, "src/Owner.java")],
@@ -65,7 +69,9 @@ describe("Message", () => {
   });
 
   it("marks a truncated answer", () => {
-    const turn: Turn = { id: 3, question: "q", status: "done", text: "Partial [1]", sources: [source(1, "a.java")], done: done({ truncated: true }) };
+    const turn: Turn = { id: 3, question: "q", setup: "fast",
+      startedAt: 0,
+      status: "done", text: "Partial [1]", sources: [source(1, "a.java")], done: done({ truncated: true }) };
     render(<Message turn={turn} selected={null} onOpenSource={() => {}} />);
     expect(screen.getByText("Answer cut off at the output limit")).toBeTruthy();
   });

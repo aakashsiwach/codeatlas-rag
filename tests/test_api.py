@@ -197,3 +197,33 @@ def test_offline_llm_streams_cited_answers_without_a_model(settings, repo):
     assert stream.text.count("event: token") > 3 and "event: done" in stream.text
     done = client.post("/api/ask", json={"question": "Where is the payment retry logic?", "mode": "hybrid"}).json()
     assert [c["index"] for c in done["citations"]][:1] == [1] and not done["refused"]
+
+
+def test_ask_takes_a_named_setup_and_reports_it_with_timings(client, atlas):
+    atlas.settings.setups = {"fast": {"mode": "vector", "k": 3}, "quality": {"mode": "hybrid+graph", "k": 4}}
+    body = client.get("/api/config").json()
+    assert body["setups"] == {"fast": {"mode": "vector", "k": 3}, "quality": {"mode": "hybrid+graph", "k": 4}}
+    assert body["default_setup"] == "fast"
+
+    resp = client.post("/api/ask", json={"question": "Where is the payment retry logic?", "setup": "quality"})
+    assert resp.status_code == 200
+    answer = resp.json()
+    assert (answer["setup"], answer["config"]) == ("quality", "hybrid+graph")
+    assert len(answer["sources"]) <= 4 + 1  # k blocks plus the graph report
+    assert 0 <= answer["timings_ms"]["retrieval_ms"] <= answer["timings_ms"]["total_ms"]
+
+    stream = client.post("/api/ask/stream", json={"question": "payment retry", "setup": "fast"})
+    events = [json.loads(line[6:]) for line in stream.text.splitlines() if line.startswith("data: {")]
+    sources, done = events[0], events[-1]
+    assert sources["setup"] == "fast" and sources["retrieval_ms"] >= 0
+    assert (done["setup"], done["config"]) == ("fast", "vector") and done["timings_ms"]["total_ms"] >= 0
+
+    without = client.post("/api/ask", json={"question": "payment retry", "mode": "hybrid"}).json()
+    assert without["setup"] is None and without["config"] == "hybrid"
+
+
+def test_ask_rejects_unknown_setups_and_setup_with_mode(client):
+    unknown = client.post("/api/ask", json={"question": "anything", "setup": "turbo"})
+    assert unknown.status_code == 400 and "fast" in unknown.json()["detail"]
+    both = client.post("/api/ask/stream", json={"question": "anything", "setup": "fast", "mode": "hybrid"})
+    assert both.status_code == 400

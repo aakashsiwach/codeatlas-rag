@@ -32,6 +32,8 @@ def main() -> None:
         llm_provider="fake",
         llm_model="offline",
         default_mode="hybrid+graph",
+        # The frozen setups without the reranker (no model download): fast = vector, quality = hybrid+graph.
+        setups={"fast": {"mode": "vector", "k": 5}, "quality": {"mode": "hybrid+graph", "k": 5}},
         default_k=5,
         trace_enabled=False,
     )

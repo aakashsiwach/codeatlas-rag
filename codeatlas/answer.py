@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from typing import Any
@@ -83,6 +84,7 @@ class Answer:
     trace_id: str | None = None
     stop_reason: str | None = None
     truncated: bool = False  # the model hit the output limit: the answer is cut off
+    timings_ms: dict[str, float] = field(default_factory=dict)  # retrieval and total, server side
     context: list[Chunk] = field(default_factory=list, repr=False)
 
     def to_dict(self) -> dict[str, Any]:
@@ -101,7 +103,12 @@ class Answer:
             "trace_id": self.trace_id,
             "stop_reason": self.stop_reason,
             "truncated": self.truncated,
+            "timings_ms": self.timings_ms,
         }
+
+
+def _ms_since(start: float) -> float:
+    return round((time.perf_counter() - start) * 1000, 1)
 
 
 def graph_chunk(report: str) -> Chunk:
@@ -221,7 +228,9 @@ class AnswerEngine:
 
     def ask(self, question: str, cfg: RetrievalConfig) -> Answer:
         trace = self.tracer.start("ask", question=question, config=cfg.name)
+        start = time.perf_counter()
         rr, context = self._retrieve(question, cfg, trace)
+        retrieval_ms = _ms_since(start)
         if self.is_low_confidence(rr):
             answer = self._refusal(question, cfg, rr, context)
         else:
@@ -239,19 +248,23 @@ class AnswerEngine:
                 self.tracer.finish(trace, error=exc.to_dict())
                 raise
             answer = self._finalize(question, cfg, resp.text, context, rr, resp.usage, resp.stop_reason)
+        answer.timings_ms = {"retrieval_ms": retrieval_ms, "total_ms": _ms_since(start)}
         self._finish(trace, answer)
         return answer
 
     def ask_stream(self, question: str, cfg: RetrievalConfig) -> Iterator[dict[str, Any]]:
         """Yield server-sent events: sources, token*, done."""
         trace = self.tracer.start("ask_stream", question=question, config=cfg.name)
+        start = time.perf_counter()
         rr, context = self._retrieve(question, cfg, trace)
+        retrieval_ms = _ms_since(start)
         yield {
             "event": "sources",
             "data": {
                 "sources": self._sources(context, rr),
                 "confidence": round(rr.confidence, 4),
                 "confidence_source": rr.confidence_source,
+                "retrieval_ms": retrieval_ms,
             },
         }
         if self.is_low_confidence(rr):
@@ -278,6 +291,7 @@ class AnswerEngine:
                 self.tracer.finish(trace, error=exc.to_dict(), partial_answer_chars=sum(map(len, parts)))
                 raise
             answer = self._finalize(question, cfg, "".join(parts), context, rr, usage, usage.stop_reason)
+        answer.timings_ms = {"retrieval_ms": retrieval_ms, "total_ms": _ms_since(start)}
         self._finish(trace, answer)
         yield {"event": "done", "data": answer.to_dict()}
 

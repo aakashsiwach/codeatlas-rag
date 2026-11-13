@@ -2,11 +2,15 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { ActiveConfig, AnswerDone, ApiError, Source, askStream, fetchConfig } from "./api";
 import { Message } from "./components/Message";
 import { SettingsPanel, Settings, loadSettings, saveSettings } from "./components/SettingsPanel";
+import { SetupSwitch } from "./components/SetupSwitch";
 import { SourceViewer } from "./components/SourceViewer";
 
 export interface Turn {
   id: number;
   question: string;
+  setup: string; // the named setup used, or "custom"
+  startedAt: number; // performance.now() when asked
+  retrievalMs?: number; // set when the sources arrive
   status: "streaming" | "done" | "error";
   text: string;
   sources: Source[];
@@ -55,22 +59,38 @@ export default function App() {
     setTurns((all) => all.map((t) => (t.id === id ? patch(t) : t)));
   }, []);
 
-  const mode = settings.mode || config?.default_mode || "hybrid";
-  const k = settings.k || config?.default_k || 8;
+  // A named setup unless Settings holds a custom mode/k (or the server offers no setups).
+  const setupNames = Object.keys(config?.setups ?? {});
+  const custom = Boolean(settings.mode || settings.k) || setupNames.length === 0;
+  const setup = setupNames.includes(settings.setup) ? settings.setup : config?.default_setup ?? setupNames[0] ?? "";
+  const active = custom ? undefined : config?.setups?.[setup];
+  const mode = active?.mode ?? (settings.mode || config?.default_mode || "vector");
+  const k = active?.k ?? (settings.k || config?.default_k || 5);
+  const label = custom ? "custom" : setup;
+
+  function changeSettings(s: Settings) {
+    setSettings(s);
+    saveSettings(s);
+  }
 
   async function ask(question: string) {
     const id = nextId.current++;
-    setTurns((all) => [...all, { id, question, status: "streaming", text: "", sources: [] }]);
+    setTurns((all) => [
+      ...all,
+      { id, question, setup: label, startedAt: performance.now(), status: "streaming", text: "", sources: [] },
+    ]);
     setBusy(true);
     abort.current = new AbortController();
     try {
-      await askStream(question, { mode, k, token: settings.token, signal: abort.current.signal }, (ev) => {
+      const target = custom ? { mode, k } : { setup };
+      await askStream(question, { ...target, token: settings.token, signal: abort.current.signal }, (ev) => {
         if (ev.event === "sources")
           update(id, (t) => ({
             ...t,
             sources: ev.data.sources,
             confidence: ev.data.confidence,
             confidenceSource: ev.data.confidence_source,
+            retrievalMs: ev.data.retrieval_ms ?? performance.now() - t.startedAt,
           }));
         else if (ev.event === "token") update(id, (t) => ({ ...t, text: t.text + ev.data }));
         else if (ev.event === "done") update(id, (t) => ({ ...t, status: "done", text: ev.data.answer, done: ev.data }));
@@ -106,7 +126,7 @@ export default function App() {
         </div>
         <button className="setup-chip" onClick={() => setShowSettings(true)} data-testid="open-settings">
           <span className="dot" aria-hidden />
-          {mode} · k={k}
+          {label} · {mode} · k={k}
         </button>
       </header>
 
@@ -132,6 +152,12 @@ export default function App() {
       </main>
 
       <form className="composer" onSubmit={onSubmit}>
+        <SetupSwitch
+          setups={setupNames}
+          value={custom ? null : setup}
+          disabled={busy}
+          onChange={(name) => changeSettings({ ...settings, setup: name, mode: "", k: 0 })}
+        />
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -159,10 +185,7 @@ export default function App() {
         <SettingsPanel
           config={config}
           settings={settings}
-          onChange={(s) => {
-            setSettings(s);
-            saveSettings(s);
-          }}
+          onChange={changeSettings}
           onClose={() => setShowSettings(false)}
         />
       )}

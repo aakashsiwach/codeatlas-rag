@@ -33,6 +33,8 @@ export interface AnswerDone {
   truncated: boolean;
   usage: { input_tokens?: number; output_tokens?: number; cost_usd?: number | null };
   trace_id: string | null;
+  setup?: string | null; // the named setup the request used, if any
+  timings_ms?: { retrieval_ms?: number; total_ms?: number };
 }
 
 export interface ActiveConfig {
@@ -49,6 +51,8 @@ export interface ActiveConfig {
   llm: string | null;
   thresholds: { vector: number | null; rerank: number | null };
   auth_required: boolean;
+  setups?: Record<string, { mode: string; k: number }>;
+  default_setup?: string;
 }
 
 export interface FileSlice {
@@ -61,7 +65,10 @@ export interface FileSlice {
 }
 
 export type StreamEvent =
-  | { event: "sources"; data: { sources: Source[]; confidence: number; confidence_source: string } }
+  | {
+      event: "sources";
+      data: { sources: Source[]; confidence: number; confidence_source: string; retrieval_ms?: number; setup?: string | null };
+    }
   | { event: "token"; data: string }
   | { event: "done"; data: AnswerDone }
   | { event: "error"; data: { detail: string; kind?: string; error_class?: string } };
@@ -159,6 +166,11 @@ async function errorText(resp: Response): Promise<string> {
   }
 }
 
+/** 35 -> "35 ms", 27199 -> "27.2 s". */
+export function formatMs(ms: number): string {
+  return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`;
+}
+
 export const fetchConfig = (token: string) => getJson<ActiveConfig>("/api/config", token);
 
 export function fetchFile(path: string, start: number, end: number, token: string): Promise<FileSlice> {
@@ -169,13 +181,16 @@ export function fetchFile(path: string, start: number, end: number, token: strin
 /** POST /api/ask/stream and hand each parsed event to onEvent. Resolves when the stream ends. */
 export async function askStream(
   question: string,
-  options: { mode: string; k: number; token: string; signal?: AbortSignal },
+  // A named setup (fast, quality), or an explicit mode and k.
+  options: { setup?: string; mode?: string; k?: number; token: string; signal?: AbortSignal },
   onEvent: (event: StreamEvent) => void,
 ): Promise<void> {
   const resp = await fetch("/api/ask/stream", {
     method: "POST",
     headers: headers(options.token, true),
-    body: JSON.stringify({ question, mode: options.mode, k: options.k }),
+    body: JSON.stringify(
+      options.setup ? { question, setup: options.setup } : { question, mode: options.mode, k: options.k },
+    ),
     signal: options.signal,
   });
   if (!resp.ok || !resp.body) throw new ApiError(resp.status, await errorText(resp));

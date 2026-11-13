@@ -1,6 +1,9 @@
-import { Fragment } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { Turn } from "../App";
-import { Source, citationSegments } from "../api";
+import { AnswerDone, Source, citationSegments, formatMs } from "../api";
+
+// Typical retrieval time per setup (dev p50, CPU). Setups not listed get the plain loading dots.
+const EXPECTED_MS: Record<string, number> = { quality: 30_000 };
 
 interface Props {
   turn: Turn;
@@ -71,6 +74,44 @@ function SourceList({ sources, selected, onOpenSource, title }: { sources: Sourc
   );
 }
 
+/** Shown while a slow setup retrieves: elapsed time against the typical time. */
+function Progress({ setup, startedAt, expectedMs }: { setup: string; startedAt: number; expectedMs: number }) {
+  const [now, setNow] = useState(() => performance.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(performance.now()), 250);
+    return () => clearInterval(timer);
+  }, []);
+  const elapsed = Math.max(0, now - startedAt);
+  const pct = Math.min(95, (elapsed / expectedMs) * 100);
+  return (
+    <div className="progress" role="status" data-testid="progress">
+      <div className="progress-head">
+        <strong>Retrieving with the {setup} setup…</strong>
+        <span className="elapsed">{Math.floor(elapsed / 1000)} s</span>
+      </div>
+      <div className="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
+        <div className="progress-bar" style={{ width: `${pct}%` }} />
+      </div>
+      <div className="muted">
+        Hybrid search, then the cross-encoder reranks the candidates and the code graph adds neighbours. Usually
+        about {Math.round(expectedMs / 1000)} s on CPU{elapsed > expectedMs * 1.5 ? "; this one is taking longer" : ""}.
+      </div>
+    </div>
+  );
+}
+
+/** setup · config · retrieval and total latency · confidence (· cost). */
+function metaLine(turn: Turn, done: AnswerDone): string {
+  const t = done.timings_ms ?? {};
+  const retrieval = t.retrieval_ms ?? turn.retrievalMs;
+  const parts = [done.setup ?? turn.setup, done.config];
+  if (retrieval !== undefined) parts.push(`retrieval ${formatMs(retrieval)}`);
+  if (t.total_ms !== undefined) parts.push(`total ${formatMs(t.total_ms)}`);
+  parts.push(`confidence ${done.confidence.toFixed(2)} (${done.confidence_source})`);
+  if (done.usage.cost_usd != null) parts.push(`$${done.usage.cost_usd.toFixed(4)}`);
+  return parts.join(" · ");
+}
+
 export function Message({ turn, selected, onOpenSource }: Props) {
   const done = turn.done;
   const refused = done?.refused ?? false;
@@ -98,12 +139,15 @@ export function Message({ turn, selected, onOpenSource }: Props) {
             </div>
           </div>
           <SourceList sources={turn.sources.filter((s) => s.kind !== "graph").slice(0, 3)} selected={selected} onOpenSource={onOpenSource} title="Closest matches" />
+          <div className="meta" data-testid="answer-meta">{metaLine(turn, done!)}</div>
         </div>
       ) : (
         turn.status !== "error" && (
           <div className="answer" data-testid="answer">
             {turn.text ? (
               <AnswerText text={turn.text} sources={turn.sources} onOpenSource={onOpenSource} />
+            ) : turn.retrievalMs === undefined && EXPECTED_MS[turn.setup] ? (
+              <Progress setup={turn.setup} startedAt={turn.startedAt} expectedMs={EXPECTED_MS[turn.setup]} />
             ) : (
               <div className="thinking" aria-label="Retrieving">
                 <span />
@@ -118,9 +162,8 @@ export function Message({ turn, selected, onOpenSource }: Props) {
             )}
             <SourceList sources={turn.sources} selected={selected} onOpenSource={onOpenSource} title="Sources" />
             {done && (
-              <div className="meta">
-                {done.config} · confidence {done.confidence.toFixed(2)} ({done.confidence_source})
-                {done.usage.cost_usd != null ? ` · $${done.usage.cost_usd.toFixed(4)}` : ""}
+              <div className="meta" data-testid="answer-meta">
+                {metaLine(turn, done)}
               </div>
             )}
           </div>

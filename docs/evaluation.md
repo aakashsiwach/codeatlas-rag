@@ -94,7 +94,9 @@ below shows that the retrieval code has not changed since.
 
 The dev numbers were first measured at **426f15c** and **1cad3ef**. Those reports were not committed, and
 two were recorded with uncommitted, non-retrieval UI work in the tree. To check them, the dev split was
-re-run on 2026-11-14 at **e8db2cf** (with only uncommitted documentation in the tree), using these commands:
+re-run on 2026-11-14 at **e8db2cf**, with only uncommitted documentation in the tree. The MiniLM run finished
+at **460a8cf**; the commits in between changed indexing of hidden directories, webhooks and traces, but not
+retrieval. The commands were:
 
 ```bash
 codeatlas --index-dir .codeatlas-naive eval eval/petclinic-dev.yaml -k 5 --deep-k 10 --configs vector
@@ -103,7 +105,7 @@ CODEATLAS_RERANKER_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2 \
   codeatlas eval eval/petclinic-dev.yaml -k 5 --deep-k 10 --configs hybrid+rerank,hybrid+rerank+graph
 ```
 
-| Setup (dev) | recall@5 | recall@10 | hit@5 | MRR | README | Re-run at e8db2cf |
+| Setup (dev) | recall@5 | recall@10 | hit@5 | MRR | README | Re-run (2026-11-14) |
 |---|---|---|---|---|---|---|
 | naive + vector | 0.752 | 0.879 | 0.939 | 0.720 | — | identical |
 | AST + vector (`fast`) | 0.816 | 0.919 | 1.000 | 0.665 | Frozen setups | identical |
@@ -112,6 +114,9 @@ CODEATLAS_RERANKER_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2 \
 | hybrid + ModernBERT rerank | 0.889 | 0.965 | 0.970 | 0.806 | — | identical |
 | hybrid + ModernBERT rerank + graph (`quality`) | 0.894 | 0.967 | 1.000 | 0.791 | Frozen setups | identical |
 | hybrid + MiniLM rerank | 0.745 | 0.881 | 0.939 | 0.563 | Honest findings | identical |
+
+The re-run reports are committed: `results/eval-20261114-002731` (naive), `-002751` (AST, ModernBERT) and
+`-013818` (MiniLM).
 
 Retrieval is deterministic on the same index, so recall, hit and MRR reproduce exactly. Latencies depend
 on the machine and its load. The README's are from a laptop CPU, and re-runs under load are slower.

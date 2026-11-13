@@ -9,3 +9,13 @@ tests
 **/__pycache__
 .pytest_cache
 .ruff_cache
+**/node_modules
+ui/dist
+ui/test-results
+ui/playwright-report
+ui/screenshots
+eval/review
+REVIEW.md
+infra
+docs
+scripts

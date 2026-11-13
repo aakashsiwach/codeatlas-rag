@@ -8,7 +8,9 @@ services:
       - qdrant_data:/qdrant/storage
 
   api:
-    build: .
+    build:
+      context: .
+      target: app  # the API and the web UI on :8000; `deploy` bakes in the PetClinic index
     depends_on:
       - qdrant
     env_file:

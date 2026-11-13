@@ -248,7 +248,8 @@ All settings are environment variables prefixed with `CODEATLAS_` (or entries in
 | `DEFAULT_MODE` | `hybrid+graph` | Any mode spec |
 | `MIN_VECTOR_SIMILARITY` | `0.30` | Refusal threshold without reranking |
 | `MIN_RERANK_CONFIDENCE` | `0.05` | Refusal threshold with reranking; tune with the unanswerable eval questions |
-| `*_COST_PER_MTOK` | `0` | Prices used for per-query and per-index-run cost tracking |
+| `LLM_PRICES` | none | JSON prices per `"<provider>:<model>"` (`input_per_mtok`, `output_per_mtok`); Bedrock and the Anthropic API are separate entries. Unlisted models report cost as `unpriced`, never $0. Eval reports sum answer and judge cost |
+| `EMBEDDING_COST_PER_MTOK` | `0` | Price used for index-run embedding cost |
 
 ## Project layout
 

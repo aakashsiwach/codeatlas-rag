@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from codeatlas.config import Settings
-from codeatlas.llm import LLM, LLMError, LLMUsage, is_truncated, thinking_for
+from codeatlas.llm import LLM, LLMError, LLMUsage, is_truncated, llm_cost_usd, thinking_for
 from codeatlas.models import Chunk
 from codeatlas.retrieval.retriever import RetrievalConfig, RetrievalResult, Retriever
 from codeatlas.tracing import Trace, Tracer
@@ -343,10 +343,7 @@ class AnswerEngine:
         stop_reason: str | None = None,
     ) -> Answer:
         valid, invalid = extract_citations(text, len(context))
-        cost = (
-            usage.input_tokens * self.settings.llm_input_cost_per_mtok
-            + usage.output_tokens * self.settings.llm_output_cost_per_mtok
-        ) / 1_000_000
+        cost = llm_cost_usd(self.settings, usage.input_tokens, usage.output_tokens)
         return Answer(
             question=question,
             answer=text,
@@ -363,7 +360,7 @@ class AnswerEngine:
             usage={
                 "input_tokens": usage.input_tokens,
                 "output_tokens": usage.output_tokens,
-                "cost_usd": round(cost, 6),
+                "cost_usd": cost,  # None: no price configured for this model
             },
             context=context,
         )

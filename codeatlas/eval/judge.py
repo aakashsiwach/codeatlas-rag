@@ -57,12 +57,20 @@ def judge_answer(
         data = None
     if truncated or not isinstance(data, dict) or "claims" not in data:
         error = "judge_truncated" if truncated else "judge_unparseable"
-        return {"faithfulness": None, "correct": None, "judge_tokens": tokens, "judge_error": error, "raw": resp.text}
+        return {
+            "faithfulness": None,
+            "correct": None,
+            "judge_tokens": tokens,
+            "judge_usage": resp.usage,
+            "judge_error": error,
+            "raw": resp.text,
+        }
     claims = int(data.get("claims") or 0)
     supported = int(data.get("supported") or 0)
     return {
         "faithfulness": 1.0 if claims == 0 else min(1.0, supported / claims),
         "correct": data.get("correct"),
         "judge_tokens": tokens,
+        "judge_usage": resp.usage,
         "judge_error": None,
     }

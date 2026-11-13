@@ -86,7 +86,7 @@ def ask(
     typer.echo(
         f"\nconfidence={answer.confidence:.3f} ({answer.confidence_source}) "
         f"tokens={answer.usage.get('input_tokens', 0)}+{answer.usage.get('output_tokens', 0)} "
-        f"cost=${answer.usage.get('cost_usd', 0)} trace={answer.trace_id}"
+        f"cost={_money(answer.usage.get('cost_usd'))} trace={answer.trace_id}"
     )
 
 
@@ -157,6 +157,14 @@ def evaluate_cmd(
             typer.secho(f"  {errors} question(s) failed with LLM errors; see the report", fg=typer.colors.YELLOW)
 
     typer.echo("\n" + to_markdown(reports) + "\n\n" + category_markdown(reports))
+    from codeatlas.eval.runner import total_cost
+
+    cost = total_cost(reports)
+    if cost:
+        typer.echo(
+            f"\nLLM usage (answers + judge): {cost['llm_tokens_in']} input + {cost['llm_tokens_out']} output tokens, "
+            f"cost {_money(cost['llm_cost_usd']) if cost['llm_cost_usd'] != 'unpriced' else 'unpriced'}"
+        )
     typer.echo(f"\nfull report (run metadata, weakest questions) written to {out}/eval-{stamp}.{{md,json}}")
 
 
@@ -181,6 +189,10 @@ def serve(
     from codeatlas.api.app import create_app
 
     uvicorn.run(create_app(settings), host=host, port=port)
+
+
+def _money(value: float | None) -> str:
+    return "unpriced" if value is None else f"${value:.4f}"
 
 
 def _is_loopback(host: str) -> bool:

@@ -14,7 +14,7 @@ from codeatlas import __version__
 from codeatlas.eval.dataset import EvalItem, resolve_expected_sources
 from codeatlas.eval.judge import judge_answer
 from codeatlas.eval.metrics import citation_precision, hit_at_k, percentile, recall_at_k, reciprocal_rank
-from codeatlas.llm import LLM, LLMError, thinking_for
+from codeatlas.llm import LLM, LLMError, llm_cost_usd, thinking_for
 from codeatlas.retrieval.retriever import RetrievalConfig
 
 if TYPE_CHECKING:
@@ -44,6 +44,10 @@ class ItemResult:
     correct: bool | None = None
     judge_error: str | None = None  # "judge_truncated" or "judge_unparseable": the verdict was not scored
     error: str | None = None  # an LLM call failed for this question ("kind: ErrorClass: message")
+    # Tokens and cost of LLM calls for this question (answer + judge); cost None = unpriced.
+    llm_input_tokens: int = 0
+    llm_output_tokens: int = 0
+    llm_cost_usd: float | None = None
 
 
 def _mean(values: list[float | None]) -> float | None:
@@ -92,7 +96,22 @@ class EvalReport:
                 out["judge_unparseable"] = sum(1 for r in answerable if r.judge_error == "judge_unparseable")
         if any(r.error for r in self.items):
             out["errors"] = sum(1 for r in self.items if r.error)
+        out.update(self.cost())
         return out
+
+    def cost(self) -> dict[str, Any]:
+        """LLM tokens and cost for this configuration: answers plus judge. Empty when no LLM ran."""
+        tokens_in = sum(r.llm_input_tokens for r in self.items)
+        tokens_out = sum(r.llm_output_tokens for r in self.items)
+        if not tokens_in and not tokens_out:
+            return {}
+        costs = [r.llm_cost_usd for r in self.items if r.llm_input_tokens or r.llm_output_tokens]
+        priced = all(c is not None for c in costs)
+        return {
+            "llm_tokens_in": tokens_in,
+            "llm_tokens_out": tokens_out,
+            "llm_cost_usd": round(sum(costs), 4) if priced else "unpriced",
+        }
 
     def by_category(self) -> dict[str, dict[str, Any]]:
         """Recall, hit rate and MRR per question category (answerable questions only)."""
@@ -188,6 +207,7 @@ def evaluate(
             result.answer = answer.answer
             result.refused = answer.refused
             result.answer_truncated = answer.truncated
+            _add_usage(result, atlas, answer.usage.get("input_tokens", 0), answer.usage.get("output_tokens", 0))
             if item.answerable and not answer.refused:
                 result.citation_precision = citation_precision(
                     item.expected_sources, [c.chunk for c in answer.citations]
@@ -205,11 +225,24 @@ def evaluate(
                     except LLMError as exc:
                         result.error = f"judge {exc.kind}: {exc.error_class}: {exc.message}"
                     else:
+                        usage = verdict["judge_usage"]
+                        _add_usage(result, atlas, usage.input_tokens, usage.output_tokens)
                         result.faithfulness = verdict["faithfulness"]
                         result.correct = verdict["correct"]
                         result.judge_error = verdict["judge_error"]
         report.items.append(result)
     return report
+
+
+def _add_usage(result: ItemResult, atlas: CodeAtlas, input_tokens: int, output_tokens: int) -> None:
+    """Accumulate one LLM call's tokens and cost on the item; cost stays None when unpriced."""
+    if not input_tokens and not output_tokens:
+        return
+    priced_before = result.llm_cost_usd is not None or not (result.llm_input_tokens or result.llm_output_tokens)
+    result.llm_input_tokens += input_tokens
+    result.llm_output_tokens += output_tokens
+    cost = llm_cost_usd(atlas.settings, input_tokens, output_tokens)
+    result.llm_cost_usd = (result.llm_cost_usd or 0.0) + cost if cost is not None and priced_before else None
 
 
 def _failed_item(item: EvalItem, exc: LLMError) -> ItemResult:
@@ -298,6 +331,8 @@ def run_metadata(
 def _cell(value: Any, column: str = "") -> str:
     if value is None:
         return "-"
+    if isinstance(value, float) and column == "llm_cost_usd":
+        return f"${value:.4f}"
     if isinstance(value, float) and column not in _MS_COLUMNS:
         return f"{value:.3f}"
     return str(value)
@@ -373,4 +408,35 @@ def report_markdown(reports: list[EvalReport], metadata: dict[str, Any], weakest
         f"## Weakest {weakest} questions per configuration",
         weakest_markdown(reports, weakest),
     ]
+    cost = total_cost(reports)
+    if cost:
+        sections[4:4] = ["## LLM cost (answers + judge)", cost_markdown(reports, cost)]
     return "\n\n".join(sections) + "\n"
+
+
+def total_cost(reports: list[EvalReport]) -> dict[str, Any]:
+    """Tokens and USD over all configurations of a run; cost is "unpriced" if any call was unpriced."""
+    parts = [r.cost() for r in reports]
+    parts = [p for p in parts if p]
+    if not parts:
+        return {}
+    costs = [p["llm_cost_usd"] for p in parts]
+    return {
+        "llm_tokens_in": sum(p["llm_tokens_in"] for p in parts),
+        "llm_tokens_out": sum(p["llm_tokens_out"] for p in parts),
+        "llm_cost_usd": round(sum(costs), 4) if all(isinstance(c, float) for c in costs) else "unpriced",
+    }
+
+
+def cost_markdown(reports: list[EvalReport], total: dict[str, Any]) -> str:
+    rows = []
+    for r in reports:
+        c = r.cost()
+        if c:
+            rows.append([r.config, str(c["llm_tokens_in"]), str(c["llm_tokens_out"]), _usd(c["llm_cost_usd"])])
+    rows.append(["**total**", str(total["llm_tokens_in"]), str(total["llm_tokens_out"]), _usd(total["llm_cost_usd"])])
+    return "\n".join(_table(["config", "input tokens", "output tokens", "cost"], rows))
+
+
+def _usd(value: Any) -> str:
+    return f"${value:.4f}" if isinstance(value, float) else str(value)

@@ -70,6 +70,24 @@ class LLMResponse:
     stop_reason: str | None = None  # normalised: "end_turn", "max_tokens", or the provider's value
 
 
+def price_key(settings: Settings) -> str:
+    return f"{settings.llm_provider.lower()}:{settings.llm_model}"
+
+
+def llm_cost_usd(settings: Settings, input_tokens: int, output_tokens: int) -> float | None:
+    """Cost of a call at the configured price for this provider and model; None when unpriced."""
+    entry = settings.llm_prices.get(price_key(settings))
+    if not entry:
+        return None
+    try:
+        price_in, price_out = float(entry["input_per_mtok"]), float(entry["output_per_mtok"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(
+            f"CODEATLAS_LLM_PRICES[{price_key(settings)!r}] needs numeric input_per_mtok and output_per_mtok"
+        ) from exc
+    return round((input_tokens * price_in + output_tokens * price_out) / 1_000_000, 6)
+
+
 def is_truncated(stop_reason: str | None) -> bool:
     return stop_reason == "max_tokens"
 

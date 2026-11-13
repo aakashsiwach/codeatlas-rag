@@ -60,8 +60,11 @@ class Settings(BaseSettings):
     llm_max_tokens: int = 1200
     llm_timeout_s: float = 120.0  # per request
     llm_max_retries: int = 4  # with backoff, on throttling and transient errors
-    llm_input_cost_per_mtok: float = 0.0
-    llm_output_cost_per_mtok: float = 0.0
+    # USD prices per million tokens, keyed by "<provider>:<model>" so the same model on Bedrock and on the
+    # Anthropic API are separate entries. JSON, e.g.
+    # {"bedrock:<model id>": {"input_per_mtok": <usd>, "output_per_mtok": <usd>}}. There are no built-in
+    # prices: a model without an entry is reported as "unpriced", never as $0.
+    llm_prices: dict[str, dict[str, float]] = {}
     aws_region: str | None = None
     # Thinking type sent with LLM-judge calls so reasoning cannot eat the judge's small output budget.
     # "disabled" works for most models; some newer ones reject it and turn thinking off with another

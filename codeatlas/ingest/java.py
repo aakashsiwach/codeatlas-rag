@@ -18,7 +18,7 @@ import tree_sitter_java as tsjava
 from tree_sitter import Language, Node, Parser
 
 from codeatlas.endpoints import join_paths, literal_path
-from codeatlas.ingest.text import line_windows
+from codeatlas.ingest.text import line_windows, split_lines
 from codeatlas.models import Chunk, make_chunk_id
 
 TYPE_KINDS = {
@@ -148,7 +148,7 @@ def parse_java(path: str, source: str, max_chunk_lines: int = 120) -> tuple[Java
             if match:
                 facts.imports.append(match.group(1))
 
-    ctx = _Ctx(path=path, lines=source.splitlines(), facts=facts, chunks=[], max_lines=max_chunk_lines)
+    ctx = _Ctx(path=path, lines=split_lines(source), facts=facts, chunks=[], max_lines=max_chunk_lines)
     for child in root.named_children:
         if child.type in TYPE_KINDS:
             _parse_type(ctx, child, outer=None)

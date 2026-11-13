@@ -3,6 +3,18 @@
 from __future__ import annotations
 
 
+def split_lines(text: str) -> list[str]:
+    """Split on newline only (dropping a trailing carriage return), the way tree-sitter and editors
+    number lines.
+
+    str.splitlines() also breaks on form feeds, U+2028 and other separators that can occur in comments or
+    string literals, which would shift chunk text away from the line numbers reported for it."""
+    lines = text.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    return [line[:-1] if line.endswith("\r") else line for line in lines]
+
+
 def line_windows(
     lines: list[str], start_line: int, max_lines: int, overlap: int = 0
 ) -> list[tuple[int, int, str]]:

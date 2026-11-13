@@ -94,3 +94,24 @@ def test_facts_round_trip():
 
     facts, _ = parse("order/OrderServiceImpl.java")
     assert JavaFileFacts.from_dict(facts.to_dict()) == facts
+
+
+def test_line_numbers_ignore_unicode_line_separators():
+    from codeatlas.ingest.text import split_lines
+
+    source = (
+        "package p;\r\n"
+        "/* page break \x0c here and a \u2028 separator */\r\n"
+        "public class A {\r\n"
+        '    String s = "x\u2029y";\r\n'
+        "    void run() {\r\n"
+        "        go();\r\n"
+        "    }\r\n"
+        "}\r\n"
+    )
+    assert split_lines(source)[4] == "    void run() {"
+    assert len(split_lines(source)) == 8 and split_lines("a\n") == ["a"] and split_lines("") == []
+    facts, chunks = parse_java("p/A.java", source)
+    method = next(c for c in chunks if c.kind == "method")
+    assert (method.start_line, method.end_line) == (5, 7)
+    assert method.text.splitlines()[0].strip() == "void run() {"  # text matches its reported lines

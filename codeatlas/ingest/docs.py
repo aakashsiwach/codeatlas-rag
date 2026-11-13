@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from codeatlas.ingest.text import pack_lines
+from codeatlas.ingest.text import pack_lines, split_lines
 from codeatlas.models import Chunk, make_chunk_id
 
 _MD_HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$")
@@ -21,7 +21,7 @@ def chunk_markdown(path: str, text: str, max_chars: int = 2400, language: str = 
     current: tuple[list[str], int, list[str]] = ([], 1, [])
     in_fence = False
 
-    for i, line in enumerate(text.splitlines(), start=1):
+    for i, line in enumerate(split_lines(text), start=1):
         if _FENCE.match(line):
             in_fence = not in_fence
         match = None if in_fence else heading_re.match(line)
@@ -65,7 +65,7 @@ def _push_section(sections: list, section: tuple[list[str], int, list[str]]) -> 
 def chunk_plain(path: str, text: str, kind: str, language: str, max_chars: int = 2000) -> list[Chunk]:
     """Blank-line-aware windows for config files, plain text and unparseable code."""
     chunks: list[Chunk] = []
-    for part, (s, e, body) in enumerate(pack_lines(text.splitlines(), 1, max_chars)):
+    for part, (s, e, body) in enumerate(pack_lines(split_lines(text), 1, max_chars)):
         chunks.append(
             Chunk(
                 id=make_chunk_id(path, kind, None, s, part),
@@ -84,7 +84,7 @@ def chunk_plain(path: str, text: str, kind: str, language: str, max_chars: int =
 def chunk_naive(path: str, text: str, language: str, max_chars: int = 1500) -> list[Chunk]:
     """Baseline: fixed-size character windows with no structure and no contextual header."""
     chunks: list[Chunk] = []
-    for part, (s, e, body) in enumerate(pack_lines(text.splitlines(), 1, max_chars, prefer_blank=False)):
+    for part, (s, e, body) in enumerate(pack_lines(split_lines(text), 1, max_chars, prefer_blank=False)):
         chunks.append(
             Chunk(
                 id=make_chunk_id(path, "naive", None, s, part),

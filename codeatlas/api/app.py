@@ -18,6 +18,7 @@ from codeatlas import __version__
 from codeatlas.api.webhook import changed_paths, verify_signature
 from codeatlas.atlas import CodeAtlas
 from codeatlas.config import Settings
+from codeatlas.ingest.text import split_lines
 from codeatlas.ingest.walker import classify
 from codeatlas.llm import LLMError, LLMNotConfiguredError
 
@@ -130,7 +131,7 @@ def create_app(settings: Settings | None = None, atlas: CodeAtlas | None = None)
         # Only files that were indexed can be viewed: never .env, .git/config or other unindexed files.
         if target.relative_to(root).as_posix() not in atlas.store.file_hashes():
             raise HTTPException(404, "File not found")
-        lines = target.read_text(encoding="utf-8", errors="replace").splitlines()
+        lines = split_lines(target.read_text(encoding="utf-8", errors="replace"))
         lo = max(1, start or 1)
         hi = min(len(lines), end or len(lines))
         kind = classify(path)

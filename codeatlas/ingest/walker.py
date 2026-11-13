@@ -61,6 +61,10 @@ def load_source_file(repo: Path, rel_path: str, exclude_dirs: list[str], max_byt
     abs_path = repo / Path(*rel.parts)
     if kind is None or not abs_path.is_file() or abs_path.stat().st_size > max_bytes:
         return None
+    # A symlink (or a symlinked directory) may point outside the repository, e.g. at ~/.aws/credentials;
+    # such files must never be indexed, shown or sent to an LLM.
+    if not abs_path.resolve().is_relative_to(repo.resolve()):
+        return None
     return SourceFile(str(rel), abs_path, kind[0], kind[1], file_sha256(abs_path))
 
 

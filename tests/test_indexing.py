@@ -59,3 +59,33 @@ def test_chunker_change_requires_force(settings, repo):
     assert stats.mode == "full"
     assert {c.kind for c in atlas.store.all_chunks()} == {"naive"}
     assert atlas.graph.stats()["types"] == 0  # the naive baseline has no structural facts
+
+
+def _link_dir(link, target) -> None:
+    """Directory symlink, or a junction on Windows without symlink privilege."""
+    import os
+    import sys
+
+    try:
+        os.symlink(target, link, target_is_directory=True)
+    except OSError:
+        if sys.platform != "win32":
+            raise
+        import _winapi
+
+        _winapi.CreateJunction(str(target), str(link))
+
+
+def test_links_that_leave_the_repo_are_not_indexed(tmp_path, repo):
+    from codeatlas.ingest.walker import discover, load_source_file
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "credentials.txt").write_text("aws_secret_access_key=abc", encoding="utf-8")
+    _link_dir(repo / "docs" / "ext", outside)  # a linked directory pointing outside the repository
+    _link_dir(repo / "docs" / "same", repo / "docs" / "adr")  # a linked directory that stays inside
+
+    paths = {f.path for f in discover(repo, [], 1_000_000)}
+    assert "docs/ext/credentials.txt" not in paths
+    assert load_source_file(repo, "docs/ext/credentials.txt", [], 1_000_000) is None  # webhook path too
+    assert load_source_file(repo, "docs/same/0001-payment-retries.md", [], 1_000_000) is not None

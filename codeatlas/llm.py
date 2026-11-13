@@ -235,7 +235,10 @@ class OpenAILLM(_Provider):
 class BedrockLLM(_Provider):
     """AWS Bedrock through the model-agnostic Converse API."""
 
-    def __init__(self, model: str, region: str | None = None, timeout: float = 120.0, max_retries: int = 4):
+    def __init__(
+        self, model: str, region: str | None = None, timeout: float = 120.0, max_retries: int = 4,
+        profile: str | None = None,
+    ):
         try:
             import boto3
         except ImportError as exc:
@@ -247,7 +250,8 @@ class BedrockLLM(_Provider):
         config = Config(
             retries={"mode": "adaptive", "total_max_attempts": max_retries + 1}, read_timeout=timeout, connect_timeout=10
         )
-        self._client = boto3.client("bedrock-runtime", region_name=region, config=config)
+        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        self._client = session.client("bedrock-runtime", region_name=region, config=config)
         self.model = model
         self.name = f"bedrock:{model}"
 
@@ -334,5 +338,8 @@ def build_llm(settings: Settings) -> LLM:
     if provider == "openai":
         return OpenAILLM(settings.llm_model, settings.llm_base_url, settings.llm_timeout_s, settings.llm_max_retries)
     if provider == "bedrock":
-        return BedrockLLM(settings.llm_model, settings.aws_region, settings.llm_timeout_s, settings.llm_max_retries)
+        return BedrockLLM(
+            settings.llm_model, settings.aws_region, settings.llm_timeout_s, settings.llm_max_retries,
+            profile=settings.aws_profile,
+        )
     raise LLMNotConfiguredError(f"Unknown LLM provider: {settings.llm_provider!r}")

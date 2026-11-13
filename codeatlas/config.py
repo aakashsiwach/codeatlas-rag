@@ -66,6 +66,8 @@ class Settings(BaseSettings):
     # prices: a model without an entry is reported as "unpriced", never as $0.
     llm_prices: dict[str, dict[str, float]] = {}
     aws_region: str | None = None
+    # Named profile from ~/.aws for Bedrock. Unset uses the SDK default chain (AWS_PROFILE, then default).
+    aws_profile: str | None = None
     # Thinking type sent with LLM-judge calls so reasoning cannot eat the judge's small output budget.
     # "disabled" works for most models; some newer ones reject it and turn thinking off with another
     # value (check the provider docs). Empty string sends nothing and keeps the model default.

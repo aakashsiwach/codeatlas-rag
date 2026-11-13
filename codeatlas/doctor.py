@@ -94,7 +94,10 @@ def auth_source(settings: Settings) -> dict[str, Any]:
             import boto3
         except ImportError:
             return {"auth": "boto3 not installed (pip install 'codeatlas[bedrock]')"}
-        session = boto3.Session()
+        try:
+            session = boto3.Session(profile_name=settings.aws_profile) if settings.aws_profile else boto3.Session()
+        except Exception as exc:  # e.g. ProfileNotFound
+            return {"profile": settings.aws_profile, "auth": f"{type(exc).__name__}: {exc}"}
         creds = session.get_credentials()
         return {
             "region": settings.aws_region or session.region_name,

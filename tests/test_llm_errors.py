@@ -127,3 +127,18 @@ def test_eval_records_errors_per_question_and_keeps_going(settings, repo):
     assert failed[0].error.startswith("throttled: ThrottlingException")
     assert report.summary()["errors"] == 1
     assert sum(1 for r in report.items if r.answer is not None) == 3  # the other questions were answered
+
+
+def test_bedrock_uses_the_configured_aws_profile(tmp_path, monkeypatch):
+    pytest.importorskip("boto3")
+    from codeatlas.llm import BedrockLLM
+
+    cfg = tmp_path / "config"
+    cfg.write_text("[default]\nregion = eu-west-1\n[profile pick-me]\nregion = ap-south-1\n")
+    monkeypatch.setenv("AWS_CONFIG_FILE", str(cfg))
+    monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", str(tmp_path / "none"))
+    monkeypatch.delenv("AWS_PROFILE", raising=False)
+    monkeypatch.delenv("AWS_DEFAULT_REGION", raising=False)
+    assert BedrockLLM("m", profile="pick-me")._client.meta.region_name == "ap-south-1"
+    assert BedrockLLM("m")._client.meta.region_name == "eu-west-1"
+    assert BedrockLLM("m", region="us-east-1", profile="pick-me")._client.meta.region_name == "us-east-1"

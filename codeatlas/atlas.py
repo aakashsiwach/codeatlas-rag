@@ -40,7 +40,10 @@ class CodeAtlas:
         self.store = ChunkStore(self.settings.index_dir / "codeatlas.db")
         self.embedder = embedder or build_embedder(self.settings)
         self.vectors = VectorStore.from_settings(self.settings, self.embedder.dim)
-        self.tracer = Tracer(self.settings.index_dir / "traces.jsonl" if self.settings.trace_enabled else None)
+        self.tracer = Tracer(
+            self.settings.index_dir / "traces.jsonl" if self.settings.trace_enabled else None,
+            max_bytes=self.settings.trace_max_bytes,
+        )
         self.indexer = Indexer(self.settings, self.store, self.vectors, self.embedder)
         self._llm = llm
         if reranker is None and self.settings.reranker_model:

@@ -35,8 +35,12 @@ class Trace:
 
 
 class Tracer:
-    def __init__(self, path: Path | None):
+    """Appends one JSON line per query to `path`. When the file reaches `max_bytes`, it is moved to
+    `<name>.1` (replacing an older one) and a new file is started, so traces never grow without bound."""
+
+    def __init__(self, path: Path | None, max_bytes: int = 10_000_000):
         self.path = path
+        self.max_bytes = max_bytes
         self._lock = threading.Lock()
 
     def start(self, name: str, **attributes: Any) -> Trace:
@@ -56,5 +60,7 @@ class Tracer:
         }
         with self._lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)
+            if self.max_bytes > 0 and self.path.exists() and self.path.stat().st_size >= self.max_bytes:
+                self.path.replace(self.path.with_name(self.path.name + ".1"))
             with self.path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(record, default=str) + "\n")

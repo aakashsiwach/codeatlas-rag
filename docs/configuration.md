@@ -88,4 +88,5 @@ This page is generated from `codeatlas/config.py` by `scripts/gen_config_docs.py
 | `CODEATLAS_WEBHOOK_SECRET` | unset | Secret for verifying GitHub webhook signatures (X-Hub-Signature-256). Unset disables the webhook. |
 | `CODEATLAS_WEBHOOK_BRANCH` | unset | Only pushes to this branch trigger a re-index. Unset: every branch. |
 | `CODEATLAS_GIT_PULL_ON_WEBHOOK` | `False` | Run `git pull` in repo_path before a webhook-triggered re-index. |
-| `CODEATLAS_TRACE_ENABLED` | `True` | Write per-query traces to index_dir/traces.jsonl. |
+| `CODEATLAS_TRACE_ENABLED` | `True` | Write per-query traces (questions, retrieved chunk locations, latency, tokens) to index_dir/traces.jsonl. |
+| `CODEATLAS_TRACE_MAX_BYTES` | `10000000` | Size at which traces.jsonl is moved to traces.jsonl.1 and restarted (one old file is kept). 0: never. |

@@ -152,5 +152,7 @@ class Settings(BaseSettings):
     webhook_branch: str | None = None
     # Run `git pull` in repo_path before a webhook-triggered re-index.
     git_pull_on_webhook: bool = False
-    # Write per-query traces to index_dir/traces.jsonl.
+    # Write per-query traces (questions, retrieved chunk locations, latency, tokens) to index_dir/traces.jsonl.
     trace_enabled: bool = True
+    # Size at which traces.jsonl is moved to traces.jsonl.1 and restarted (one old file is kept). 0: never.
+    trace_max_bytes: int = 10_000_000

@@ -29,6 +29,18 @@ Rules:
 - If the context does not contain the answer, reply exactly "{REFUSAL}" and then suggest what to search for.
 - Be concise. Prefer short paragraphs or bullet lists. Quote code only in short fenced excerpts."""
 
+_REFUSAL_RE = re.compile(r"\bi (?:don't|do not|dont) know based on the indexed code\b")
+_REFUSAL_WINDOW = 200  # characters at the start of the answer where a refusal is recognised
+
+
+def is_refusal(text: str) -> bool:
+    """True when the answer opens with the refusal sentence, tolerating case, quotes, markdown,
+    curly apostrophes, a missing period and a short lead-in such as "Unfortunately,"."""
+    head = text[:_REFUSAL_WINDOW].replace("’", "'").replace("‘", "'").lower()
+    head = re.sub(r"[*_>`\"“”]", "", head)
+    return _REFUSAL_RE.search(" ".join(head.split())) is not None
+
+
 _CITE = re.compile(r"\[(\d+)\]")
 _CODE_BLOCK = re.compile(r"```.*?```", re.DOTALL)
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
@@ -150,7 +162,7 @@ def count_uncited_sentences(text: str) -> int:
     count = 0
     for line in text.splitlines():
         line = line.strip()
-        if not line or line.startswith("#") or line.startswith(REFUSAL):
+        if not line or line.startswith("#") or is_refusal(line):
             continue
         for sentence in _SENTENCE_END.split(line):
             if len(sentence) > 25 and not _CITE.search(sentence) and not sentence.rstrip().endswith(":"):
@@ -301,7 +313,7 @@ class AnswerEngine:
             sources=self._sources(context, rr),
             confidence=rr.confidence,
             confidence_source=rr.confidence_source,
-            refused=text.strip().startswith(REFUSAL),
+            refused=is_refusal(text),
             invalid_citations=invalid,
             uncited_sentences=count_uncited_sentences(text),
             usage={

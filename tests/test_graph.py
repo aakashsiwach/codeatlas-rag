@@ -75,3 +75,25 @@ def test_impact_intent():
     assert IMPACT_INTENT.search("Which services call the /orders/{id} endpoint?")
     assert IMPACT_INTENT.search("who calls placeOrder")
     assert not IMPACT_INTENT.search("Explain the auth flow for a new joiner")
+
+
+def _facts(files: dict[str, str]):
+    return [parse_java(path, source)[0] for path, source in files.items()]
+
+
+def test_ambiguous_type_names_do_not_create_arbitrary_edges():
+    graph = CodeGraph.build(_facts({
+        "a/Config.java": "package a; public class Config { public void load() {} }",
+        "b/Config.java": "package b; public class Config { public void load() {} }",
+        "c/Uses.java": "package c; public class Uses { private Config config; void run() { config.load(); } }",
+        "d/Imports.java": "package d; import b.Config; public class Imports { private Config config; void run() { config.load(); } }",
+    }))
+    assert not any(dst.endswith("Config") for dst in graph.g.successors("c.Uses"))  # unresolvable: no edge
+    assert graph.g.has_edge("d.Imports", "b.Config")  # the import disambiguates
+    assert graph.g.has_edge("d.Imports#run", "b.Config#load")
+
+
+def test_lower_case_words_need_a_code_noun_to_match_a_type(graph):
+    assert graph.resolve_mentions("What breaks if I change the customer entity?") == [f"{PKG}.customer.Customer"]
+    assert graph.resolve_mentions("Who uses the customer's Redis cache?") == []
+    assert graph.resolve_mentions("what about orders in general") == []

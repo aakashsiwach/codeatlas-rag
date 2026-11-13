@@ -31,7 +31,12 @@ IMPACT_INTENT = re.compile(
     re.IGNORECASE,
 )
 _MENTION = re.compile(r"\b([A-Z][A-Za-z0-9_]*)(?:[.#]([a-z_][A-Za-z0-9_]*))?|\b([a-z]+[A-Z][A-Za-z0-9_]*)\b")
-_WORD = re.compile(r"\b[A-Za-z][A-Za-z0-9_]{2,}\b")
+# Lower-case words map to a type only when a code noun follows ("the customer entity"), so ordinary words in a
+# question ("owner" in "the owner's Redis cache") do not pull in an unrelated class.
+_CODE_NOUN_AFTER = re.compile(
+    r"\b([a-z][a-z0-9_]{3,})\s+(?:entity|entities|class|classes|service|controller|repository|type|model|"
+    r"interface|record|enum|bean|table|dto|component)\b"
+)
 _CALL_RELATIONS = {"calls", "implemented_by"}
 
 
@@ -116,7 +121,9 @@ class CodeGraph:
                     return c
                 if any(imp.endswith(".*") and c == f"{imp[:-2]}.{simple}" for imp in f.imports):
                     return c
-            return candidates[0]
+            # Still ambiguous (e.g. two `Config` classes and no import naming one): no edge is better than an
+            # edge to an arbitrary class.
+            return None
 
         def find_method(type_qn: str, name: str, seen: frozenset[str] = frozenset()) -> str | None:
             nid = f"{type_qn}#{name}"
@@ -210,9 +217,9 @@ class CodeGraph:
             elif bare and bare in self._methods_by_name:
                 for nid in self._methods_by_name[bare][:5]:
                     add(nid)
-        if not found:  # fall back to case-insensitive type names ("the customer entity")
-            for word in _WORD.findall(text):
-                for qn in self._by_lower.get(word.lower(), []):
+        if not found:  # fall back to lower-case type names used as code nouns ("the customer entity")
+            for word in _CODE_NOUN_AFTER.findall(text.lower()):
+                for qn in self._by_lower.get(word, []):
                     add(qn)
         return found[:limit]
 

@@ -116,6 +116,9 @@ def auth_source(settings: Settings) -> dict[str, Any]:
 def check_llm_config(settings: Settings) -> Check:
     if settings.llm_provider.lower() == "none":
         return Check("llm config", WARN, "provider is 'none': retrieval works, answers and judge do not")
+    if settings.llm_provider.lower() == "fake":  # needs no model id, key or network
+        model = settings.llm_model or "offline"
+        return Check("llm config", OK, f"fake:{model}: offline stand-in, cites retrieved blocks, calls no model")
     if not settings.llm_model:
         return Check("llm config", FAIL, "CODEATLAS_LLM_MODEL is not set")
     info = auth_source(settings)

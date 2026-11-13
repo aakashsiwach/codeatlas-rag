@@ -72,3 +72,11 @@ def test_doctor_cli_exit_code(tmp_path, monkeypatch):
     result = CliRunner().invoke(app, ["--index-dir", str(tmp_path / "idx"), "doctor", "--skip-models"])
     assert result.exit_code == 0, result.output
     assert "python" in result.output and "llm config" in result.output
+
+
+def test_doctor_accepts_the_fake_provider_without_a_model(tmp_path):
+    from codeatlas.config import Settings
+    from codeatlas.doctor import OK, check_llm_config
+
+    check = check_llm_config(Settings(_env_file=None, index_dir=tmp_path, llm_provider="fake", llm_model=""))
+    assert check.status == OK and "fake:offline" in check.detail

@@ -110,6 +110,57 @@ terraform -chdir=infra/terraform apply -var "image_tag=$TAG" -var desired_count=
 terraform -chdir=infra/terraform apply -var "image_tag=$TAG" -var desired_count=1   # start again
 ```
 
+## Demo session: deploy → smoke test → record → destroy
+
+The stack is meant to run only for a demo, not 24/7. Run one session like this:
+
+1. **Deploy.** Follow steps 1–4 above. The billable clock starts at step 2, when the ALB is created.
+   Allow 20–30 minutes: building and pushing the image, then CloudFront deploying and the models loading.
+2. **Smoke test.** Use the token from step 1.
+
+   ```bash
+   URL=$(terraform -chdir=infra/terraform output -raw url)
+   curl -s "$URL/health"                                              # {"status":"ok",...}
+   curl -s -H "Authorization: Bearer $TOKEN" "$URL/api/config"        # setups, models, thresholds
+   curl -sN -X POST "$URL/api/ask/stream" -H "Authorization: Bearer $TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"question": "How does searching for owners by last name work?", "setup": "fast"}'
+   ```
+   ```powershell
+   $url = terraform -chdir=infra/terraform output -raw url
+   Invoke-RestMethod "$url/health"
+   $auth = @{ Authorization = "Bearer $token" }
+   Invoke-RestMethod "$url/api/config" -Headers $auth
+   $body = @{ question = "How does searching for owners by last name work?"; setup = "fast" } | ConvertTo-Json
+   Invoke-RestMethod -Method Post "$url/api/ask" -Headers $auth -ContentType "application/json" -Body $body
+   ```
+
+   Then open the URL, enter the token in **Settings**, and ask one `fast` and one `quality` question. A
+   quality question streams `progress` events every 5 s while it retrieves, so it does not hit
+   CloudFront's 60 s first-byte limit. On 1 vCPU, expect it to take noticeably longer than on a laptop.
+3. **Record.** Screen-record the UI as `docs/demo.gif`, showing:
+   - a `fast` answer, then opening one of its citations
+   - a `quality` question with its progress bar
+   - an unanswerable question getting the "don't know" card
+
+   Keep `aws logs tail /ecs/codeatlas` output if anything misbehaves.
+4. **Destroy.** Run the [teardown](#teardown) commands, and check that `terraform -chdir=infra/terraform
+   state list` is empty.
+
+**Cost of a 3-hour session** (default 1 vCPU / 4 GB, us-east-1 on-demand prices; check them first):
+
+| Item | Basis | ≈ USD |
+|---|---|---|
+| Fargate | 3 h × ($0.04048 + 4 × $0.004445) | 0.18 |
+| ALB | 3 h × $0.0225, plus LCUs (billed per started hour) | 0.08 |
+| Public IPv4 addresses | 3 addresses × 3 h × $0.005 | 0.05 |
+| CloudFront, SSM, ECR, Logs | free tiers / a few MB | ≈ 0 |
+| **Infrastructure** | | **≈ 0.30** |
+| Bedrock | about 2.5k input + 0.5k output tokens per answer: at $3 / $15 per million tokens (an assumed price; use your model's), ≈ $0.015 per question, so 50 questions ≈ $0.75 | usage |
+
+A session like this stays far below the $10 budget. The alert only matters if you forget to destroy the
+stack: at about $0.10/hour, it fires within roughly four days.
+
 ## Teardown
 
 ```bash

@@ -127,3 +127,14 @@ def test_targeted_and_full_indexing_skip_the_same_directories(tmp_path):
     targeted = {p for p in (".github/workflows/ci.yml", "target/Gen.java", "src/App.java")
                 if load_source_file(tmp_path, p, excludes, 1_000_000) is not None}
     assert full == targeted == {"src/App.java"}
+
+
+def test_index_counts_chunks_longer_than_the_embedder_reads(settings, repo):
+    from codeatlas.atlas import CodeAtlas
+
+    atlas = CodeAtlas(settings)
+    atlas.embedder.max_tokens = 40  # a tiny model limit: most chunks exceed it
+    stats = atlas.index(repo)
+    assert 0 < stats.chunks_over_embed_limit <= stats.chunks_written
+    unlimited = CodeAtlas(settings.model_copy(update={"index_dir": settings.index_dir.parent / "other"}))
+    assert unlimited.index(repo).chunks_over_embed_limit == 0  # the hashing embedder has no limit

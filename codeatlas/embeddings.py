@@ -68,6 +68,12 @@ class SentenceTransformerEmbedder:
         )
 
     @property
+    def max_tokens(self) -> int | None:
+        """How many tokens the model reads; longer inputs are truncated."""
+        limit = getattr(self._model, "max_seq_length", None)
+        return int(limit) if limit else None
+
+    @property
     def dim(self) -> int:
         # sentence-transformers renamed the method; fall back to the old name for older releases.
         getter = getattr(self._model, "get_embedding_dimension", None) or self._model.get_sentence_embedding_dimension

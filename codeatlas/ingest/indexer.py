@@ -38,6 +38,8 @@ class IndexRunStats:
     files_unchanged: int = 0
     files_deleted: int = 0
     chunks_written: int = 0
+    # Chunks longer than the embedding model reads (estimated tokens): their tail is invisible to vector search.
+    chunks_over_embed_limit: int = 0
     embed_tokens: int = 0
     embed_cost_usd: float = 0.0
     duration_s: float = 0.0
@@ -183,3 +185,6 @@ class Indexer:
             self.store.replace_file(sf.path, sf.sha256, sf.category, chunks, facts.to_dict() if facts else None)
         stats.chunks_written += len(all_chunks)
         stats.embed_tokens += sum(estimate_tokens(c.embed_text) for c in all_chunks)
+        limit = getattr(self.embedder, "max_tokens", None)
+        if limit:
+            stats.chunks_over_embed_limit += sum(1 for c in all_chunks if estimate_tokens(c.embed_text) > limit)

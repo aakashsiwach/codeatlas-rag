@@ -53,6 +53,12 @@ def index(
         f"{stats.chunks_written} chunks embedded (~{stats.embed_tokens} tokens, ${stats.embed_cost_usd}) "
         f"in {stats.duration_s}s"
     )
+    if stats.chunks_over_embed_limit:
+        typer.secho(
+            f"  note: {stats.chunks_over_embed_limit} chunks are longer than the embedding model reads; vector search "
+            "sees only their start (BM25 and the reranker see more). A smaller CODEATLAS_MAX_CHUNK_LINES shortens them.",
+            fg=typer.colors.YELLOW,
+        )
     for err in stats.errors:
         typer.secho(f"  error: {err}", fg=typer.colors.YELLOW)
 

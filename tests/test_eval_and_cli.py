@@ -243,3 +243,23 @@ def test_model_loading_is_excluded_from_latency(atlas):
     assert report.warmup_ms >= 400
     assert max(r.latency_ms for r in report.items) < 400
     assert report.to_dict()["warmup_ms"] == report.warmup_ms
+
+
+def test_reports_record_relative_paths_remote_without_credentials_and_the_llm_that_ran(atlas, repo, monkeypatch):
+    import subprocess
+
+    from codeatlas.eval.runner import display_path, git_remote
+
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "remote", "add", "origin", "https://someone:s3cr3t@github.com/acme/shop.git"],
+        check=True,
+    )
+    assert git_remote(repo) == "https://github.com/acme/shop.git"
+    monkeypatch.chdir(repo.parent)
+    meta = run_metadata(atlas, FIXTURE_EVAL, load_eval_set(FIXTURE_EVAL), with_answers=True)
+    assert meta["repo_path"] == "repo" and meta["repo_remote"] == "https://github.com/acme/shop.git"
+    assert meta["llm"] == "fake"  # the LLM object that ran, not just the configured setting
+    assert not any(str(v).startswith(("/", "\\")) or ":\\" in str(v) for v in meta.values() if isinstance(v, str))
+    assert display_path(repo / "src", base=repo) == "src"
+    assert display_path(Path("/elsewhere/x"), base=repo) == "x"

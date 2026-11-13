@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import re
 import statistics
 import subprocess
 import time
@@ -262,6 +264,30 @@ def _failed_item(item: EvalItem, exc: LLMError) -> ItemResult:
 # --- run metadata ---------------------------------------------------------------------------
 
 
+def git_remote(path: Path | str | None) -> str | None:
+    """The checkout's origin URL with any credentials removed (https://user:token@host/... -> https://host/...)."""
+    if not path:
+        return None
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(path), "remote", "get-url", "origin"], capture_output=True, text=True, check=False
+        )
+    except OSError:
+        return None
+    url = out.stdout.strip()
+    return re.sub(r"^(\w+://)[^/@]*@", r"\1", url) if out.returncode == 0 and url else None
+
+
+def display_path(path: Path | str | None, base: Path | str | None = None) -> str | None:
+    """A path relative to the working directory (or base), with forward slashes; never an absolute path,
+    which would put the local folder layout into committed reports. Outside it: the last component."""
+    if path is None:
+        return None
+    p = Path(path).resolve()
+    root = Path(base or os.getcwd()).resolve()
+    return p.relative_to(root).as_posix() if p.is_relative_to(root) else p.name
+
+
 def git_commit(path: Path | str | None) -> str | None:
     """Short commit hash of the git checkout at path, suffixed with -dirty if it has local changes."""
     if not path:
@@ -296,9 +322,10 @@ def run_metadata(
         "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "codeatlas_version": __version__,
         "codeatlas_commit": git_commit(Path(__file__).resolve().parents[2]),
-        "repo_path": str(atlas.repo_path) if atlas.repo_path else None,
+        "repo_path": display_path(atlas.repo_path),
+        "repo_remote": git_remote(atlas.repo_path),
         "repo_commit": git_commit(atlas.repo_path),
-        "eval_set": str(eval_set),
+        "eval_set": display_path(eval_set),
         "questions": len(items),
         "answerable": sum(1 for i in items if i.answerable),
         "chunker": atlas.store.get_meta("chunker"),
@@ -316,7 +343,7 @@ def run_metadata(
             "duration_s": initial.get("duration_s"),
         }
     if with_answers or judge:
-        meta["llm"] = f"{settings.llm_provider}:{settings.llm_model}"
+        meta["llm"] = atlas.llm.name  # the provider:model that actually ran
         if judge:
             meta["judge_thinking"] = thinking_for(settings, "judge") or "model default"
             meta["answer_thinking"] = thinking_for(settings, "answer") or "model default"

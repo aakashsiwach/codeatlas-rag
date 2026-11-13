@@ -238,6 +238,35 @@ the graph answers that vector search misses.
    removes deleted ones. Large or force pushes fall back to a full hash-based scan, which still skips
    unchanged files.
 
+## Web UI
+
+`ui/` is a React + TypeScript chat client (Vite) for the HTTP API: answers stream in token by token,
+numbered citations open a source viewer with the cited lines highlighted, low-confidence questions show a
+"don't know" card with the closest matches, and a settings panel shows the active setup (mode, k,
+embeddings, reranker, LLM, refusal thresholds, ranking options) and lets you change the mode and k for the
+session or enter an API token.
+
+```bash
+codeatlas serve --port 8000          # the API (Node 18+ for the UI)
+cd ui
+npm install
+npm run dev                          # http://127.0.0.1:5173, proxies /api to 127.0.0.1:8000
+```
+
+Set `CODEATLAS_API` to point the dev server at another API address. To try the UI without an LLM, run
+the API with `CODEATLAS_LLM_PROVIDER=fake`: an offline provider that cites the retrieved blocks without
+calling any model.
+
+```bash
+npm test                             # unit tests (Vitest)
+npx playwright install chromium      # once
+npm run e2e                          # end-to-end smoke test: API on the fixture repo with the offline LLM
+```
+
+The end-to-end test starts its own API (`ui/e2e/serve_fixture.py`, hashing embeddings, in-memory vector
+store, offline LLM: no network or keys) and the dev server. It uses `../.venv` unless `CODEATLAS_PYTHON`
+names another interpreter; `SCREENSHOTS_DIR=screenshots npm run e2e` also saves screenshots.
+
 ## Configuration
 
 All settings are environment variables prefixed with `CODEATLAS_` (or entries in `.env`). See
@@ -271,6 +300,7 @@ codeatlas/
   api/         FastAPI app and GitHub webhook
   cli.py       `codeatlas` command
 eval/          evaluation sets
+ui/            React chat client (Vite) with Vitest and Playwright tests
 tests/         pytest suite with a small Spring Boot fixture repository
 ```
 

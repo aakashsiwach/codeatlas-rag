@@ -290,8 +290,41 @@ class BedrockLLM(_Provider):
         yield usage
 
 
+class OfflineLLM:
+    """Provider "fake": a deterministic, offline stand-in for demos, the UI and end-to-end tests.
+
+    It never calls a model. It cites the first one or two context blocks so citations, the source viewer and
+    streaming can be exercised without credentials or cost."""
+
+    def __init__(self, model: str = "offline"):
+        self.model = model
+        self.name = f"fake:{model}"
+
+    @staticmethod
+    def _reply(prompt: str) -> str:
+        if '<block id="1"' not in prompt:
+            return "I don't know based on the indexed code."
+        related = " Related code is in block [2]." if '<block id="2"' in prompt else ""
+        return f"Offline demo answer (no language model was called). The closest match is block [1].{related}"
+
+    def complete(self, system: str, prompt: str, max_tokens: int, thinking: str | None = None) -> LLMResponse:
+        text = self._reply(prompt)
+        return LLMResponse(text, LLMUsage(len(prompt) // 4, len(text) // 4), "end_turn")
+
+    def stream(
+        self, system: str, prompt: str, max_tokens: int, thinking: str | None = None
+    ) -> Iterator[str | LLMUsage]:
+        text = self._reply(prompt)
+        words = text.split(" ")
+        for i, word in enumerate(words):
+            yield word if i == len(words) - 1 else word + " "
+        yield LLMUsage(len(prompt) // 4, len(text) // 4, "end_turn")
+
+
 def build_llm(settings: Settings) -> LLM:
     provider = settings.llm_provider.lower()
+    if provider == "fake":
+        return OfflineLLM(settings.llm_model or "offline")
     if provider == "none":
         raise LLMNotConfiguredError("LLM provider is 'none'; set CODEATLAS_LLM_PROVIDER to generate answers.")
     if not settings.llm_model:

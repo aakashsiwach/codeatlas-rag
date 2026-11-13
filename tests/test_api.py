@@ -183,3 +183,17 @@ def test_config_endpoint_describes_the_active_setup_without_secrets(client, atla
     assert body["thresholds"]["vector"] == atlas.settings.min_vector_similarity
     assert body["auth_required"] is False and "api_token" not in body
 
+
+def test_offline_llm_streams_cited_answers_without_a_model(settings, repo):
+    from codeatlas.atlas import CodeAtlas
+    from codeatlas.embeddings import HashingEmbedder
+    from codeatlas.llm import OfflineLLM, build_llm
+
+    assert isinstance(build_llm(settings.model_copy(update={"llm_provider": "fake"})), OfflineLLM)
+    atlas = CodeAtlas(settings.model_copy(update={"llm_provider": "fake"}), embedder=HashingEmbedder())
+    atlas.index(repo)
+    client = TestClient(create_app(atlas=atlas))
+    stream = client.post("/api/ask/stream", json={"question": "Where is the payment retry logic?", "mode": "hybrid"})
+    assert stream.text.count("event: token") > 3 and "event: done" in stream.text
+    done = client.post("/api/ask", json={"question": "Where is the payment retry logic?", "mode": "hybrid"}).json()
+    assert [c["index"] for c in done["citations"]][:1] == [1] and not done["refused"]

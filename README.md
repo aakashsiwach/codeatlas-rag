@@ -1,39 +1,28 @@
 # CodeAtlas
 
-**Retrieval-augmented answers about Java/Spring Boot codebases, with file-and-line citations.**
+**Ask questions about a Java/Spring Boot codebase and get answers that cite the exact files and lines.**
 
-CodeAtlas indexes a Java repository together with its docs (README, ADRs, Markdown, config) and answers
-developer questions such as:
+![CodeAtlas answering a question about Spring PetClinic, with a cited source open](docs/demo.gif)
 
-- *"Where is the payment retry logic and what triggers it?"*
-- *"Which services call the `/orders/{id}` endpoint?"*
-- *"What breaks if I change the `Customer` entity?"*
-- *"Explain the auth flow for a new joiner."*
+**Held-out test result** vs a naive fixed-size-chunk vector baseline: **recall@5 0.70 → 0.81**,
+**MRR 0.63 → 0.70**, **impact-question recall 0.42 → 0.85** ([details](#results)).
 
-Every answer cites the exact files, methods and doc sections it used, and CodeAtlas answers
-*"I don't know based on the indexed code."* when retrieval confidence is too low.
+[![CI](https://github.com/aakashsiwach/codeatlas-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/aakashsiwach/codeatlas-rag/actions/workflows/ci.yml)
+[![Python 3.11 | 3.12](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)](pyproject.toml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-Most RAG demos embed fixed-size text chunks and hope for the best. CodeAtlas parses the code instead: it
-understands classes, methods, Spring stereotypes, request mappings, Feign clients and call relationships,
-and it measures every retrieval technique against an evaluation set.
+CodeAtlas indexes a Java repository together with its docs and config, and answers developer questions
+such as:
 
-## Features
+- *"How does searching for owners by last name work?"*
+- *"Which handlers redirect to the `/owners/{ownerId}` page?"*
+- *"What breaks if I change the `Owner` entity?"*
 
-| Area | What it does |
-|---|---|
-| **Code-aware chunking** | tree-sitter parses Java into class skeletons and method chunks. Each chunk carries a header with package, Spring stereotype (`@RestController`, `@Service`, `@Entity`, `@FeignClient`...), annotations, resolved HTTP endpoints and outgoing calls. |
-| **Doc chunking** | Heading-aware Markdown/AsciiDoc sections with breadcrumbs (`Shop > Modules > Orders`), plus config files (`application.yml`, `pom.xml`) and optional PDFs. |
-| **Hybrid retrieval** | BM25 with a code tokenizer (splits `findOrderById` and `/orders/{id}`) plus dense vectors in Qdrant, fused with Reciprocal Rank Fusion. |
-| **Reranking** | Cross-encoder reranker over the fused candidates; its score also drives the refusal threshold. |
-| **Query rewriting** | Optional LLM rewrite of the question into identifier-rich search queries (multi-query + RRF). |
-| **Code graph** | NetworkX call/dependency graph: field-type and local-variable call resolution, interface → implementation dispatch, type references. Powers change-impact questions and caller/callee expansion. |
-| **Endpoint tracing** | Matches HTTP paths across `@*Mapping` controllers, `@FeignClient` interfaces and URL string literals (`RestTemplate`/`WebClient`). |
-| **Grounded generation** | Numbered context blocks, mandatory `[n]` citations, invalid-citation detection and an uncited-sentence count per answer. Works with the Anthropic API, OpenAI(-compatible) or AWS Bedrock. |
-| **Incremental indexing** | Content-hash change detection; only changed files are re-chunked and re-embedded. A GitHub webhook re-indexes just the files a push touched. Each run logs files changed, tokens and estimated cost. |
-| **Evaluation** | YAML question sets with expected sources. Reports recall@k, hit@k, MRR, latency and, optionally, refusal accuracy, citation precision and LLM-judged faithfulness. Compares configurations side by side. |
-| **Observability** | Per-query traces (spans, latency, tokens, cost, retrieved chunks, confidence) written as JSONL. |
+Every answer cites the code blocks it used. When retrieval finds nothing relevant, CodeAtlas says
+*"I don't know based on the indexed code."* and shows the closest matches. Each retrieval technique is
+measured against an evaluation set with a held-out test split.
 
-## Architecture
+## How it works
 
 ```mermaid
 flowchart LR
@@ -67,41 +56,184 @@ flowchart LR
     GH[GitHub push webhook] --> W
 ```
 
+**AST chunking.** tree-sitter parses each Java file into a class outline (fields and member signatures)
+and one chunk per method, cut at real declaration boundaries instead of every N lines. Each chunk gets a
+header with its package, Spring stereotype (`@RestController`, `@Service`, `@Entity`...), annotations,
+resolved HTTP endpoints and outgoing calls. The header is embedded with the code, so a question about
+"the owners endpoint" can match a method whose body never says "owner". Docs are split by heading, and
+config files (`application.properties`, SQL schemas) are indexed whole.
+
+**Hybrid search.** BM25 with a code-aware tokenizer (it splits `findByLastName` and `/owners/{id}`) finds
+exact identifiers. Dense vectors (`bge-small-en-v1.5` in Qdrant) find paraphrases. Reciprocal Rank Fusion
+merges the two lists. Test code is ranked below main code, and class outlines below their own methods.
+
+**Reranker.** A cross-encoder (`gte-reranker-modernbert-base`) rescores the top 20 fused candidates by
+reading the question and each chunk together. It gave the largest single gain on dev, and its score is the
+confidence used for refusals. It costs about 25–30 s per question on a laptop CPU, so it is opt-in: the
+`quality` setup.
+
+**Code graph.** The parse facts build a NetworkX graph:
+- calls, resolved through field and local-variable types
+- interface → implementation dispatch
+- type references
+- which code calls which HTTP endpoint (`redirect:` URLs, Feign clients, URL literals)
+
+For impact questions ("what breaks if I change X", "who calls Y"), CodeAtlas resolves the classes, methods
+or endpoints the question names. It then walks their dependents and adds a citable dependency report to
+the context. Two of the top five slots are reserved for graph neighbours.
+
+**Citations and refusal.** The retrieved chunks go to the LLM as numbered blocks, and the prompt requires
+`[n]` citations. Citations to blocks that were not retrieved are flagged. If the retrieval confidence is
+below a threshold calibrated on the dev split, CodeAtlas refuses before calling the LLM at all. The prompt
+also tells the LLM to answer "I don't know" when the blocks do not contain the answer. The two safeguards
+complement each other, because the confidence margin is thin (see [Limitations](#limitations)).
+
+**Incremental indexing.** Every file is hashed (SHA-256), and a re-index only re-chunks and re-embeds the
+files whose content changed. A GitHub push webhook re-indexes just the files a push touched. Each run
+records the files changed, the tokens embedded, the estimated cost and the duration.
+
+## Features
+
+| Area | What it does |
+|---|---|
+| **Code-aware chunking** | tree-sitter parses Java into class skeletons and method chunks. Each chunk carries a header with package, Spring stereotype (`@RestController`, `@Service`, `@Entity`, `@FeignClient`...), annotations, resolved HTTP endpoints and outgoing calls. |
+| **Doc chunking** | Heading-aware Markdown/AsciiDoc sections with breadcrumbs (`Shop > Modules > Orders`), plus config files (`application.yml`, `pom.xml`) and optional PDFs. |
+| **Hybrid retrieval** | BM25 with a code tokenizer (splits `findOrderById` and `/orders/{id}`) plus dense vectors in Qdrant, fused with Reciprocal Rank Fusion. |
+| **Reranking** | Cross-encoder reranker over the fused candidates; its score also drives the refusal threshold. |
+| **Query rewriting** | Optional LLM rewrite of the question into identifier-rich search queries (multi-query + RRF). |
+| **Code graph** | NetworkX call/dependency graph: field-type and local-variable call resolution, interface → implementation dispatch, type references. Powers change-impact questions and caller/callee expansion. |
+| **Endpoint tracing** | Matches HTTP paths across `@*Mapping` controllers, `@FeignClient` interfaces and URL string literals (`RestTemplate`/`WebClient`). |
+| **Grounded generation** | Numbered context blocks, mandatory `[n]` citations, invalid-citation detection and an uncited-sentence count per answer. Works with the Anthropic API, OpenAI(-compatible, e.g. Ollama) or AWS Bedrock, plus an offline `fake` provider for demos and tests. |
+| **Incremental indexing** | Content-hash change detection; only changed files are re-chunked and re-embedded. A GitHub webhook re-indexes just the files a push touched. Each run logs files changed, tokens and estimated cost. |
+| **Evaluation** | YAML question sets with expected sources and a held-out test split. Reports recall@k, hit@k, MRR, latency and, optionally, refusal accuracy, citation precision and LLM-judged faithfulness. Compares configurations side by side. |
+| **Web UI** | Streaming chat with clickable citations, a source viewer, a "don't know" state and a per-question `fast` / `quality` switch. |
+| **Observability** | Per-query traces (spans, latency, tokens, cost, retrieved chunks, confidence) written as JSONL. |
+
 ## Quickstart
 
-```bash
-python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
-pip install -e ".[local,anthropic,dev]"
-cp .env.example .env                                     # set CODEATLAS_LLM_MODEL and your API key
-codeatlas doctor                                         # Python, index lock, models, LLM config
-codeatlas doctor --llm                                   # plus ONE minimal LLM call (billed, 1 token)
+You need Python 3.11+ on PATH, Git, and Node 18+ for the web UI. The first `index` downloads the embedding model
+(~130 MB), and the first `quality` question downloads the reranker (~600 MB). The commands below make no
+paid calls: `CODEATLAS_LLM_PROVIDER=fake` is an offline stand-in that cites the retrieved blocks without
+calling a model. Swap it for [Ollama](#real-answers-with-ollama-local-free) or
+[Bedrock](#real-answers-with-amazon-bedrock) for real answers.
 
-# Index the demo repository
+**Windows (PowerShell)**
+
+```powershell
+git clone https://github.com/aakashsiwach/codeatlas-rag
+cd codeatlas-rag
+python -m venv .venv
+.venv\Scripts\Activate.ps1        # if blocked: Set-ExecutionPolicy -Scope Process Bypass
+pip install -e ".[local,openai,bedrock,dev]"
+
+# Index the demo repository at the evaluated revision
 git clone https://github.com/spring-projects/spring-petclinic repos/spring-petclinic
+git -C repos/spring-petclinic checkout 500158f
 codeatlas index repos/spring-petclinic
 
-# Ask questions
+# Ask with the offline fake LLM
+$env:CODEATLAS_LLM_PROVIDER = "fake"
+codeatlas doctor --skip-models
 codeatlas ask "How does searching for owners by last name work?"
 codeatlas ask "What breaks if I change the Owner entity?" --mode hybrid+rerank+graph
-codeatlas ask "Where are pets validated?" --sources-only        # retrieval only, no LLM call
-
-# Change-impact analysis straight from the code graph
-codeatlas impact Owner
-codeatlas impact OwnerController.processFindForm --depth 2
-
-# Run the API
-codeatlas serve --port 8000
+codeatlas ask "Where are pets validated?" --sources-only     # retrieval only
+codeatlas impact Owner                                         # change impact from the code graph
 ```
 
-Re-running `codeatlas index` only re-embeds files whose content changed. Use `--force` to rebuild, for
-example after switching embedding model.
+**macOS / Linux (bash or zsh)**
+
+```bash
+git clone https://github.com/aakashsiwach/codeatlas-rag
+cd codeatlas-rag
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[local,openai,bedrock,dev]"
+
+# Index the demo repository at the evaluated revision
+git clone https://github.com/spring-projects/spring-petclinic repos/spring-petclinic
+git -C repos/spring-petclinic checkout 500158f
+codeatlas index repos/spring-petclinic
+
+# Ask with the offline fake LLM
+export CODEATLAS_LLM_PROVIDER=fake
+codeatlas doctor --skip-models
+codeatlas ask "How does searching for owners by last name work?"
+codeatlas ask "What breaks if I change the Owner entity?" --mode hybrid+rerank+graph
+codeatlas ask "Where are pets validated?" --sources-only     # retrieval only
+codeatlas impact Owner                                         # change impact from the code graph
+```
+
+Re-running `codeatlas index` only re-embeds files whose content changed. Use `--force` to rebuild it,
+for example after switching embedding model. For settings that persist, copy `.env.example` to `.env`.
+
+### Web UI
+
+Start the API in one terminal and the UI in another, then open **http://localhost:5173**.
+
+```powershell
+codeatlas serve --port 8000                  # terminal 1, with $env:CODEATLAS_LLM_PROVIDER set as above
+cd ui; npm install; npm run dev              # terminal 2
+```
+```bash
+codeatlas serve --port 8000                  # terminal 1, with CODEATLAS_LLM_PROVIDER exported as above
+cd ui && npm install && npm run dev          # terminal 2
+```
+
+### Real answers with Ollama (local, free)
+
+Ollama's OpenAI-compatible endpoint works through the `openai` provider. Raise Ollama's context window:
+its default can be smaller than CodeAtlas's prompt (instructions plus five code blocks), and Ollama
+truncates the prompt silently.
+
+```powershell
+ollama pull qwen2.5-coder:7b
+$env:OLLAMA_CONTEXT_LENGTH = "8192"; ollama serve       # in its own terminal, if Ollama is not running
+$env:CODEATLAS_LLM_PROVIDER = "openai"
+$env:CODEATLAS_LLM_MODEL    = "qwen2.5-coder:7b"
+$env:CODEATLAS_LLM_BASE_URL = "http://localhost:11434/v1"
+$env:OPENAI_API_KEY         = "ollama"                  # the SDK needs a value; Ollama ignores it
+codeatlas ask "How does searching for owners by last name work?"
+```
+```bash
+ollama pull qwen2.5-coder:7b
+OLLAMA_CONTEXT_LENGTH=8192 ollama serve                 # in its own terminal, if Ollama is not running
+export CODEATLAS_LLM_PROVIDER=openai CODEATLAS_LLM_MODEL=qwen2.5-coder:7b
+export CODEATLAS_LLM_BASE_URL=http://localhost:11434/v1 OPENAI_API_KEY=ollama
+codeatlas ask "How does searching for owners by last name work?"
+```
+
+### Real answers with Amazon Bedrock
+
+You need model access for the model in your AWS account. Credentials come from a named profile in
+`~/.aws`, never from `.env`. Bedrock bills every call, including the 1-token `doctor --llm` check.
+
+```powershell
+$env:CODEATLAS_LLM_PROVIDER = "bedrock"
+$env:CODEATLAS_LLM_MODEL    = "global.anthropic.claude-sonnet-5-5"
+$env:CODEATLAS_AWS_REGION   = "us-east-1"
+$env:CODEATLAS_AWS_PROFILE  = "codeatlas"               # your profile name
+codeatlas doctor --llm                                  # ONE 1-token call
+codeatlas ask "How does searching for owners by last name work?"
+```
+```bash
+export CODEATLAS_LLM_PROVIDER=bedrock CODEATLAS_LLM_MODEL=global.anthropic.claude-sonnet-5-5
+export CODEATLAS_AWS_REGION=us-east-1 CODEATLAS_AWS_PROFILE=codeatlas
+codeatlas doctor --llm                                  # ONE 1-token call
+codeatlas ask "How does searching for owners by last name work?"
+```
+
+Set `CODEATLAS_LLM_PRICES` (see `.env.example`) so that answers and eval reports show cost. A model
+without a price shows "unpriced", never $0. The Anthropic API works the same way, with
+`CODEATLAS_LLM_PROVIDER=anthropic` and `ANTHROPIC_API_KEY`.
 
 ### Docker
 
 ```bash
-REPO_PATH=./repos/spring-petclinic docker compose up --build
+REPO_PATH=./repos/spring-petclinic docker compose up --build      # API + UI on http://127.0.0.1:8000
 curl -X POST localhost:8000/api/index -H 'content-type: application/json' -d '{}'
 ```
+
+To deploy to AWS (ECS Fargate behind CloudFront, Terraform), see [docs/deploy.md](docs/deploy.md).
 
 ## Retrieval modes
 
@@ -112,7 +244,7 @@ Modes are composed with `+`: a base mode (`vector`, `bm25`, `hybrid`) plus any o
 | Flag | Effect |
 |---|---|
 | `rewrite` | LLM generates up to three extra identifier-rich queries; results are fused with RRF. |
-| `rerank` | Cross-encoder rescoring of the top 30 candidates; confidence = sigmoid(top score). |
+| `rerank` | Cross-encoder rescoring of the top 20 candidates; confidence = sigmoid(top score). |
 | `graph` | Boosts chunks that serve or call an HTTP path named in the question. For impact questions ("what breaks", "who calls", "which services call") it resolves the mentioned classes, methods or endpoints in the code graph, walks dependents, and adds a citable dependency report plus the affected code to the context. Otherwise it adds direct callers/callees of the top hits. |
 
 ## Evaluation
@@ -178,6 +310,8 @@ codeatlas eval eval/petclinic-dev.yaml -k 5 --deep-k 10 --configs vector,hybrid,
 #    (repeat the judged run 2-3 times; judge scores vary)
 codeatlas eval eval/petclinic-test.yaml -k 5 --deep-k 10 --configs vector,hybrid+rerank+graph --final
 codeatlas eval eval/petclinic-test.yaml -k 5 --configs hybrid+rerank+graph --judge --final
+# or: scripts/run-judge.ps1 / scripts/run-judge.sh (reviewed-references gate, cost estimate vs
+#     a budget, confirmation, N passes, then the answer-quality table)
 ```
 
 Retrieval metrics (recall@k, hit@k, MRR) do not call the LLM, so they are cheap and repeatable. The
@@ -250,6 +384,18 @@ pre-declared step 1 above, untuned.
 
 The test split has 24 questions (20 answerable, 1-5 per category), so per-category numbers are indicative
 only.
+
+**Honest findings**
+
+- **AST chunking alone did not help on the test split.** Fast (AST chunks + vector) scored recall@5 0.713,
+  against 0.704 for the naive baseline, with *lower* hit@5 (0.800 vs 0.850) and MRR (0.554 vs 0.627).
+  The +0.06 recall@5 it gained on dev did not hold up. The measured gains come from the reranker and the
+  code graph.
+- **Both frozen setups scored 0.08–0.10 lower on test than on dev.** That is the cost of tuning on dev,
+  enlarged by small samples: one question moves hit@5 by 0.05.
+- **The first reranker hurt.** `ms-marco-MiniLM-L-6-v2` lowered dev recall@5 from 0.808 (hybrid) to 0.745
+  and was replaced by ModernBERT.
+- **Quality costs about 1,000× the latency** of fast on CPU (32.7 s vs 35 ms p50 on test).
 
 **Answer quality** (quality setup, mean of 2-3 judged runs): pending.
 

@@ -65,3 +65,30 @@ jobs:
       - name: Lint the Dockerfile
         working-directory: .
         run: docker build --check .
+
+  # Runs the README's macOS/Linux quickstart as written (offline fake LLM). Keep in sync with README.md.
+  quickstart:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: README quickstart (macOS / Linux)
+        env:
+          PIP_EXTRA_INDEX_URL: https://download.pytorch.org/whl/cpu
+        run: |
+          set -euxo pipefail
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install -e ".[local,openai,bedrock,dev]"
+          git clone https://github.com/spring-projects/spring-petclinic repos/spring-petclinic
+          git -C repos/spring-petclinic checkout 500158f
+          codeatlas index repos/spring-petclinic
+          export CODEATLAS_LLM_PROVIDER=fake
+          codeatlas doctor --skip-models
+          codeatlas ask "How does searching for owners by last name work?"
+          codeatlas ask "What breaks if I change the Owner entity?" --mode hybrid+rerank+graph
+          codeatlas ask "Where are pets validated?" --sources-only
+          codeatlas impact Owner

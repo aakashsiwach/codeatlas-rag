@@ -73,6 +73,8 @@ flowchart LR
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -e ".[local,anthropic,dev]"
 cp .env.example .env                                     # set CODEATLAS_LLM_MODEL and your API key
+codeatlas doctor                                         # Python, index lock, models, LLM config
+codeatlas doctor --llm                                   # plus ONE minimal LLM call (billed, 1 token)
 
 # Index the demo repository
 git clone https://github.com/spring-projects/spring-petclinic repos/spring-petclinic

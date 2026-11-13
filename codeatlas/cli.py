@@ -227,6 +227,25 @@ def _is_loopback(host: str) -> bool:
 
 
 @app.command()
+def doctor(
+    ctx: typer.Context,
+    llm: bool = typer.Option(
+        False, "--llm", help="Also make ONE minimal LLM call (1 output token). The provider bills it."
+    ),
+    skip_models: bool = typer.Option(False, "--skip-models", help="Do not load the embedding and reranker models"),
+) -> None:
+    """Check Python, the index (and its lock), the models and the LLM provider configuration."""
+    from codeatlas.doctor import FAIL, run_checks
+
+    colors = {"ok": typer.colors.GREEN, "warn": typer.colors.YELLOW, "fail": typer.colors.RED}
+    checks = run_checks(_settings(ctx), llm_call=llm, models=not skip_models)
+    for c in checks:
+        typer.secho(f"{c.status:<4}  {c.name:<16} {c.detail}", fg=colors[c.status])
+    if any(c.status == FAIL for c in checks):
+        raise typer.Exit(1)
+
+
+@app.command()
 def stats(ctx: typer.Context) -> None:
     """Show index size, graph size and recent index runs."""
     typer.echo(json.dumps(_atlas(ctx).stats(), indent=2, default=str))

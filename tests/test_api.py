@@ -301,3 +301,14 @@ def test_stream_reports_errors_raised_behind_the_heartbeat(client, atlas, monkey
     names_and_data = _events(client.post("/api/ask/stream", json={"question": "anything"}).text)
     assert [n for n, _ in names_and_data] == ["progress", "sources", "error"]
     assert names_and_data[-1][1]["kind"] == "throttled"
+
+
+def test_config_names_the_offline_provider_like_the_llm_does():
+    from codeatlas.api.app import llm_label
+    from codeatlas.config import Settings
+    from codeatlas.llm import build_llm
+
+    fake = Settings(_env_file=None, llm_provider="fake", llm_model="")
+    assert llm_label(fake) == build_llm(fake).name == "fake:offline"
+    assert llm_label(Settings(_env_file=None, llm_provider="none")) is None
+    assert llm_label(Settings(_env_file=None, llm_provider="bedrock", llm_model="m")) == "bedrock:m"

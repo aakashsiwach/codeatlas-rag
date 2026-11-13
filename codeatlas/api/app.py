@@ -54,6 +54,15 @@ def _sse(events: Iterator[dict[str, Any]]) -> Iterator[str]:
         yield f"event: error\ndata: {json.dumps({'detail': 'Internal error while answering', 'kind': 'internal'})}\n\n"
 
 
+def llm_label(settings: Settings) -> str | None:
+    """provider:model as the UI shows it; the offline provider's model defaults to "offline", like build_llm."""
+    provider = settings.llm_provider.lower()
+    if provider == "none":
+        return None
+    model = settings.llm_model or ("offline" if provider == "fake" else "(model not set)")
+    return f"{provider}:{model}"
+
+
 def with_heartbeat(events: Iterator[dict[str, Any]], interval: float) -> Iterator[dict[str, Any]]:
     """Run the answer stream in a worker thread and interleave `progress` events: one at once, so a proxy
     gets its first byte immediately, and one every `interval` seconds while nothing else is sent (retrieval
@@ -177,7 +186,7 @@ def create_app(settings: Settings | None = None, atlas: CodeAtlas | None = None)
             "embedder": atlas.store.get_meta("embedder"),
             "chunker": atlas.store.get_meta("chunker"),
             "reranker": settings.reranker_model or None,
-            "llm": f"{settings.llm_provider}:{settings.llm_model}" if settings.llm_provider != "none" else None,
+            "llm": llm_label(settings),
             "thresholds": {
                 "vector": atlas.engine.threshold_for("vector"),
                 "rerank": atlas.engine.threshold_for("rerank"),

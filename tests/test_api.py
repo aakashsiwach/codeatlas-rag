@@ -160,3 +160,15 @@ def test_webhook_helpers():
     payload = {"commits": [{"added": ["a.java"], "modified": ["b.md"], "removed": ["c.java"]}, {"modified": ["a.java"]}]}
     assert changed_paths(payload) == ["a.java", "b.md", "c.java"]
     assert changed_paths({"commits": [{}] * 20}) is None
+
+
+def test_webhook_rejects_missing_or_malformed_signatures(client, atlas):
+    body = b'{"ref": "refs/heads/main", "commits": []}'
+    headers = {"X-GitHub-Event": "push"}
+    assert client.post("/api/webhook/github", content=body, headers=headers).status_code == 401
+    for sig in ("sha1=" + sign(body)[7:], sign(body).upper(), sign(body + b" ")):
+        resp = client.post("/api/webhook/github", content=body, headers={**headers, "X-Hub-Signature-256": sig})
+        assert resp.status_code == 401, sig
+    atlas.settings.webhook_secret = None
+    unconfigured = TestClient(create_app(atlas=atlas))
+    assert unconfigured.post("/api/webhook/github", content=body, headers={**headers, "X-Hub-Signature-256": sign(body)}).status_code == 503

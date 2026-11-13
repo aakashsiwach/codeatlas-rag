@@ -62,7 +62,7 @@ $token
 ```
 
 **2. Create the stack without the service** (no image yet). Start by copying `infra/terraform/terraform.tfvars.example` to
-`terraform.tfvars` and setting `budget_alert_email`.
+`terraform.tfvars`, then set `budget_alert_email`, `bedrock_model_id` and `bedrock_foundation_model_id`.
 
 ```bash
 cd infra/terraform

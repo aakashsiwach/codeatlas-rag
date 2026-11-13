@@ -41,15 +41,13 @@ variable "desired_count" {
 }
 
 variable "bedrock_model_id" {
-  description = "Bedrock inference profile id the API calls (CODEATLAS_LLM_MODEL)."
+  description = "Bedrock inference profile id the API calls (CODEATLAS_LLM_MODEL), e.g. a global.<provider>.<model> profile."
   type        = string
-  default     = "global.anthropic.claude-sonnet-5-5"
 }
 
 variable "bedrock_foundation_model_id" {
-  description = "Foundation model behind the inference profile. The task role may invoke only this model and that profile."
+  description = "Foundation model behind the inference profile (the profile id without its geography prefix). The task role may invoke only this model and that profile."
   type        = string
-  default     = "anthropic.claude-sonnet-5-5"
 }
 
 variable "llm_prices" {

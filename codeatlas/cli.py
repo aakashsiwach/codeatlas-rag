@@ -370,7 +370,7 @@ def demo(
     ctx: typer.Context,
     repo: Path = typer.Option(Path("repos/spring-petclinic"), "--repo", help="Where PetClinic is, or will be cloned"),
     port: int = typer.Option(8000, help="Port for the API and the UI (on 127.0.0.1)"),
-    ui: bool = typer.Option(True, "--ui/--no-ui", help="Build and serve the web UI (needs Node 18+)"),
+    ui: bool = typer.Option(True, "--ui/--no-ui", help="Build and serve the web UI (needs Node 26+)"),
     keep_llm: bool = typer.Option(
         False, "--keep-llm", help="Use the configured LLM provider instead of the offline fake one"
     ),

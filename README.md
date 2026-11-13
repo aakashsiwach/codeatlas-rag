@@ -113,7 +113,7 @@ records the files changed, the tokens embedded, the estimated cost and the durat
 
 ## Quickstart
 
-You need Python 3.11+ on PATH, Git, and Node 18+ for the web UI. The first `index` downloads the embedding model
+You need Python 3.11+ on PATH, Git, and Node 26+ for the web UI. The first `index` downloads the embedding model
 (~130 MB), and the first `quality` question downloads the reranker (~600 MB). The commands below make no
 paid calls: `CODEATLAS_LLM_PROVIDER=fake` is an offline stand-in that cites the retrieved blocks without
 calling a model. Swap it for [Ollama](#real-answers-with-ollama-local-free) or
@@ -464,7 +464,7 @@ shows a progress bar while it retrieves (about 30 s on CPU). A custom mode and k
 switch for experiments.
 
 ```bash
-codeatlas serve --port 8000          # the API (Node 18+ for the UI)
+codeatlas serve --port 8000          # the API (Node 26+ for the UI)
 cd ui
 npm install
 npm run dev                          # http://127.0.0.1:5173, proxies /api to 127.0.0.1:8000

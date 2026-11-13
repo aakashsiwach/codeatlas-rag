@@ -4,7 +4,7 @@ Thanks for your interest. Bug reports, evaluation questions and pull requests ar
 
 ## Development setup
 
-You need Python 3.11+, Git, and Node 18+ for the UI.
+You need Python 3.11+, Git, and Node 26+ (the current LTS) for the UI.
 
 ```bash
 git clone https://github.com/aakashsiwach/codeatlas-rag

@@ -47,4 +47,4 @@ body:
     id: env
     attributes:
       label: OS, Python and Node versions
-      placeholder: Windows 11, Python 3.12.10, Node 20.18
+      placeholder: Windows 11, Python 3.12.10, Node 26.13

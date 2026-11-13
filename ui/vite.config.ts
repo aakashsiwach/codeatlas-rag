@@ -17,5 +17,8 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     include: ["src/**/*.test.{ts,tsx}"],
+    // Node 25+ defines its own localStorage global (undefined without --localstorage-file), which hides
+    // jsdom's. Turn Node's off in the test workers so the tests use jsdom's storage, like a browser.
+    execArgv: ["--no-experimental-webstorage"],
   },
 });

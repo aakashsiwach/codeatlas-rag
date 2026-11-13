@@ -3,6 +3,9 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=26"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit -p . && vite build",
@@ -16,7 +19,7 @@
     "react-dom": "18.3.1"
   },
   "devDependencies": {
-    "@playwright/test": "1.61.1",
+    "@playwright/test": "1.65.0",
     "@testing-library/dom": "10.4.0",
     "@testing-library/react": "16.1.0",
     "@types/react": "18.3.12",
@@ -25,6 +28,6 @@
     "jsdom": "25.0.1",
     "typescript": "5.6.3",
     "vite": "6.4.6",
-    "vitest": "2.1.9"
+    "vitest": "4.1.12"
   }
 }

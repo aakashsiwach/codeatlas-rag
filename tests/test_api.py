@@ -227,3 +227,32 @@ def test_ask_rejects_unknown_setups_and_setup_with_mode(client):
     assert unknown.status_code == 400 and "fast" in unknown.json()["detail"]
     both = client.post("/api/ask/stream", json={"question": "anything", "setup": "fast", "mode": "hybrid"})
     assert both.status_code == 400
+
+
+def test_serves_the_built_ui_when_configured(atlas, tmp_path):
+    ui = tmp_path / "dist"
+    (ui / "assets").mkdir(parents=True)
+    (ui / "index.html").write_text("<!doctype html><title>CodeAtlas</title>", encoding="utf-8")
+    (ui / "assets" / "app.js").write_text("console.log(1)", encoding="utf-8")
+    atlas.settings.ui_dir = ui
+    atlas.settings.api_token = "s3cret"
+    try:
+        client = TestClient(create_app(atlas=atlas))
+        assert "<title>CodeAtlas</title>" in client.get("/").text
+        assert client.get("/assets/app.js").text == "console.log(1)"
+        assert client.get("/health").json()["status"] == "ok"
+        assert client.get("/api/config").status_code == 401  # the UI is public; the API still needs the token
+        auth = {"Authorization": "Bearer s3cret"}
+        assert client.get("/api/config", headers=auth).json()["default_setup"] == "fast"
+    finally:
+        atlas.settings.ui_dir = None
+        atlas.settings.api_token = None
+
+
+def test_ui_dir_without_a_build_fails_fast(atlas, tmp_path):
+    atlas.settings.ui_dir = tmp_path
+    try:
+        with pytest.raises(RuntimeError, match="npm run build"):
+            create_app(atlas=atlas)
+    finally:
+        atlas.settings.ui_dir = None

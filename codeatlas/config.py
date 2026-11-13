@@ -102,6 +102,8 @@ class Settings(BaseSettings):
 
     # API, webhook and tracing
     cors_origins: list[str] = ["http://localhost:5173"]
+    # Directory with the built web UI (ui/dist). When set, the API serves it at / (one container, one origin).
+    ui_dir: Path | None = None
     # Bearer token required on every /api/* route when set (the GitHub webhook uses its HMAC instead).
     api_token: str | None = None
     # `codeatlas serve` refuses a non-loopback host without api_token unless this is set, e.g. in a

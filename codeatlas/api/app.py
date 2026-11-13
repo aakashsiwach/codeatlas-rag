@@ -12,6 +12,7 @@ from typing import Any
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from codeatlas import __version__
@@ -236,4 +237,9 @@ def create_app(settings: Settings | None = None, atlas: CodeAtlas | None = None)
         background.add_task(atlas.sync_from_push, paths)
         return {"status": "accepted", "files": None if paths is None else len(paths)}
 
+    if settings.ui_dir is not None:
+        # Mounted last so every API route above takes precedence; html=True serves index.html at /.
+        if not (settings.ui_dir / "index.html").is_file():
+            raise RuntimeError(f"CODEATLAS_UI_DIR={settings.ui_dir} has no index.html; run `npm run build` in ui/")
+        app.mount("/", StaticFiles(directory=settings.ui_dir, html=True), name="ui")
     return app

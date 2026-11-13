@@ -41,7 +41,7 @@ def build_ui(say: Callable[[str], None], source: Path = UI_SOURCE, run: Run = su
         return dist
     npm = shutil.which("npm")
     if not (source / "package.json").is_file() or npm is None:
-        say("web UI not built (needs the ui/ sources and Node 26+); serving the API only")
+        say("web UI not built (needs the ui/ sources and Node 24+); serving the API only")
         return None
     say("building the web UI (npm ci, vite build) ...")
     if not (source / "node_modules").is_dir():

@@ -8,7 +8,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
-- The web UI needs Node 26 (the current LTS): `engines` in `ui/package.json`, CI and the Docker build stage.
+- The web UI needs Node 24 or newer (`engines` in `ui/package.json`). CI tests the UI on Node 24 and 26,
+  and the Docker build stage uses Node 26 (the current LTS).
 - Vitest 2 → 4.1.12 and Playwright 1.61.1 → 1.65.0. `npm audit` now reports 0 vulnerabilities: the six
   advisories left in 1.0.0 were all inside Vitest 2's own dependencies (an old Vite 5 and esbuild).
 - The Vitest workers run with `--no-experimental-webstorage`: Node 25+ defines its own `localStorage`

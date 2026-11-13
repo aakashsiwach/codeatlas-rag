@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
@@ -38,7 +38,7 @@ describe("scroll effects", () => {
     ));
     const { unmount } = render(<StrictMode><SourceViewer source={source} token="" onClose={() => {}} /></StrictMode>);
     await screen.findByText("c");
-    expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+    await waitFor(() => expect(Element.prototype.scrollIntoView).toHaveBeenCalled()); // the effect runs after the render
     expect(() => unmount()).not.toThrow();
     expect(effectWarnings()).toEqual([]);
   });

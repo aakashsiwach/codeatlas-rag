@@ -358,3 +358,13 @@ def test_judge_sees_a_reference_answer_only_once_reviewed(atlas, tmp_path):
     assert not any("DRAFT-REFERENCE" in p for p in judge.prompts)
     assert any("REVIEWED-REFERENCE" in p for p in judge.prompts)
     assert run_metadata(atlas, eval_file, items)["reference_answers_reviewed"] == "1/2"
+
+
+def test_offline_llm_returns_a_parseable_judge_verdict():
+    from codeatlas.eval.judge import judge_answer
+    from codeatlas.llm import OfflineLLM
+    from codeatlas.models import Chunk
+
+    block = Chunk(id="c1", path="a/Owner.java", kind="method", text="class Owner {}", embed_text="class Owner {}", start_line=1, end_line=3)
+    verdict = judge_answer(OfflineLLM(), "What is Owner?", "Owner is a class [1].", [block])
+    assert verdict["judge_error"] is None and verdict["faithfulness"] == 1.0 and verdict["correct"] is None

@@ -298,7 +298,8 @@ class OfflineLLM:
     """Provider "fake": a deterministic, offline stand-in for demos, the UI and end-to-end tests.
 
     It never calls a model. It cites the first one or two context blocks so citations, the source viewer and
-    streaming can be exercised without credentials or cost."""
+    streaming can be exercised without credentials or cost. Asked to judge an answer, it returns a fixed,
+    parseable verdict, so judged eval runs can be tested offline (their scores mean nothing)."""
 
     def __init__(self, model: str = "offline"):
         self.model = model
@@ -306,6 +307,8 @@ class OfflineLLM:
 
     @staticmethod
     def _reply(prompt: str) -> str:
+        if "Answer to evaluate:" in prompt:  # the LLM-judge prompt (codeatlas.eval.judge)
+            return '{"claims": 1, "supported": 1, "correct": null}'
         if '<block id="1"' not in prompt:
             return "I don't know based on the indexed code."
         related = " Related code is in block [2]." if '<block id="2"' in prompt else ""

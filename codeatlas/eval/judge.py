@@ -62,6 +62,7 @@ def judge_answer(
             "correct": None,
             "judge_tokens": tokens,
             "judge_usage": resp.usage,
+            "judge_stop_reason": resp.stop_reason,
             "judge_error": error,
             "raw": resp.text,
         }
@@ -72,5 +73,6 @@ def judge_answer(
         "correct": data.get("correct"),
         "judge_tokens": tokens,
         "judge_usage": resp.usage,
+        "judge_stop_reason": resp.stop_reason,
         "judge_error": None,
     }

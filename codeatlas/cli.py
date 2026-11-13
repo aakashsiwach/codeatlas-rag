@@ -219,6 +219,123 @@ def evaluate_cmd(
     typer.echo(f"\nfull report (run metadata, weakest questions) written to {out}/eval-{stamp}.{{md,json}}")
 
 
+def _require_final(eval_set: Path, final: bool) -> None:
+    if is_held_out(eval_set) and not final:
+        typer.secho(
+            f"{eval_set.name} is a held-out test split; pass --final once the setup is frozen.", fg=typer.colors.RED
+        )
+        raise typer.Exit(2)
+
+
+def _require_reviewed(items) -> None:
+    from codeatlas.eval.judge_run import unreviewed
+
+    pending = unreviewed(items)
+    if pending:
+        typer.secho(
+            f"{len(pending)} of {len(items)} reference answers are not reviewed (reviewed: false): "
+            + ", ".join(pending)
+            + ". Review them and set reviewed: true before a judged run.",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(2)
+
+
+@app.command("check-reviewed")
+def check_reviewed(eval_set: Path = typer.Argument(..., exists=True, dir_okay=False)) -> None:
+    """Exit 2 unless every reference answer in the set is marked reviewed. Makes no calls."""
+    from codeatlas.eval.dataset import load_eval_set
+
+    items = load_eval_set(eval_set)
+    _require_reviewed(items)
+    with_reference = sum(1 for i in items if i.reference_answer)
+    typer.echo(f"{eval_set.name}: all {with_reference} reference answers are reviewed")
+
+
+@app.command("judge-check")
+def judge_check(
+    ctx: typer.Context,
+    eval_set: Path = typer.Argument(..., exists=True, dir_okay=False),
+    setup: str = typer.Option("quality", "--setup", help="Named setup to answer with"),
+    passes: int = typer.Option(3, "--passes", min=1, help="Judged runs the estimate covers"),
+    budget: float = typer.Option(5.0, "--budget", help="USD; exit 4 if the estimate exceeds it"),
+    question: Optional[str] = typer.Option(
+        None, "--question", help="Question id to check (default: the first one answered)"
+    ),
+    final: bool = typer.Option(False, "--final", help="Allow a held-out *-test.yaml set"),
+) -> None:
+    """ONE answer and ONE judge call (billed), then the estimated cost of the judged runs.
+
+    Exit codes: 1 truncated answer or verdict, judge error or LLM error; 2 unreviewed references or a
+    held-out set without --final; 3 the model has no price (CODEATLAS_LLM_PRICES); 4 over budget."""
+    from codeatlas.eval.dataset import load_eval_set
+    from codeatlas.eval.judge_run import ESTIMATE_MARGIN, estimate_cost, single_check
+    from codeatlas.llm import LLMError
+
+    _require_final(eval_set, final)
+    items = load_eval_set(eval_set)
+    _require_reviewed(items)
+    atlas = _atlas(ctx)
+    try:
+        cfg = atlas.setup_config(setup)
+        check = single_check(atlas, items, cfg, question)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    except LLMError as exc:
+        typer.secho(f"LLM call failed: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1) from exc
+
+    typer.echo(f"model {atlas.llm.name} | setup {setup} ({cfg.name}, k={cfg.k}) | question {check.question_id}")
+    parts = (("answer", check.answer, check.answer_cost_usd), ("judge", check.judge, check.judge_cost_usd))
+    for name, part, cost in parts:
+        fields = " | ".join(f"{key}={value}" for key, value in part.items())
+        typer.echo(f"{name:<6} {fields} | cost={'unpriced' if cost is None else _money(cost)}")
+    if check.problems:
+        typer.secho("check failed: " + "; ".join(check.problems), fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    estimate = estimate_cost(check, items, passes)
+    if estimate is None:
+        typer.secho(
+            f"{atlas.llm.name} has no price, so the cost cannot be estimated or capped. Set CODEATLAS_LLM_PRICES.",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(3)
+    answerable = sum(1 for i in items if i.answerable)
+    typer.echo(
+        f"estimate: {passes} pass(es) x ({len(items)} answers + {answerable} verdicts) x {ESTIMATE_MARGIN} margin "
+        f"= {_money(estimate)} (budget {_money(budget)})"
+    )
+    if estimate > budget:
+        typer.secho("the estimate exceeds the budget", fg=typer.colors.RED)
+        raise typer.Exit(4)
+
+
+@app.command("judge-summary")
+def judge_summary(
+    reports: List[Path] = typer.Argument(..., exists=True, dir_okay=False, help="eval-*.json from judged runs"),
+    budget: Optional[float] = typer.Option(
+        None, "--budget", help="USD; exit 4 if the runs cost more (3 if unpriced)"
+    ),
+) -> None:
+    """The README answer-quality table (mean ± sd over the runs) and their total LLM cost. Makes no calls."""
+    from codeatlas.eval.judge_run import summarize, summary_markdown
+
+    try:
+        summary = summarize(reports)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(summary_markdown(summary))
+    if budget is not None:
+        cost = summary["total_cost_usd"]
+        if cost is None:
+            typer.secho("the runs are unpriced, so the budget cannot be enforced", fg=typer.colors.RED)
+            raise typer.Exit(3)
+        if cost > budget:
+            typer.secho(f"spent {_money(cost)}, over the {_money(budget)} budget", fg=typer.colors.RED)
+            raise typer.Exit(4)
+
+
 @app.command()
 def serve(
     ctx: typer.Context,

@@ -5,6 +5,9 @@ from __future__ import annotations
 import hmac
 import json
 import logging
+import queue
+import threading
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -49,6 +52,54 @@ def _sse(events: Iterator[dict[str, Any]]) -> Iterator[str]:
     except Exception:  # noqa: BLE001 - the client must learn the stream failed, not see it just stop
         log.exception("ask stream failed")
         yield f"event: error\ndata: {json.dumps({'detail': 'Internal error while answering', 'kind': 'internal'})}\n\n"
+
+
+def with_heartbeat(events: Iterator[dict[str, Any]], interval: float) -> Iterator[dict[str, Any]]:
+    """Run the answer stream in a worker thread and interleave `progress` events: one at once, so a proxy
+    gets its first byte immediately, and one every `interval` seconds while nothing else is sent (retrieval
+    with a reranker can take 30 s on CPU). Errors from the worker are re-raised here, so _sse reports them."""
+    out: queue.Queue = queue.Queue()
+    stop = threading.Event()
+    end = object()
+
+    def pump() -> None:
+        try:
+            for event in events:
+                if stop.is_set():  # the client went away
+                    break
+                out.put(event)
+        except BaseException as exc:  # noqa: BLE001 - handed over to the response thread
+            out.put(exc)
+        finally:
+            close = getattr(events, "close", None)
+            if close is not None:
+                close()
+            out.put(end)
+
+    start = time.monotonic()
+    stage = "retrieving"
+
+    def progress() -> dict[str, Any]:
+        return {"event": "progress", "data": {"stage": stage, "elapsed_ms": round((time.monotonic() - start) * 1000)}}
+
+    threading.Thread(target=pump, name="ask-stream", daemon=True).start()
+    try:
+        yield progress()
+        while True:
+            try:
+                item = out.get(timeout=interval)
+            except queue.Empty:
+                yield progress()
+                continue
+            if item is end:
+                return
+            if isinstance(item, BaseException):
+                raise item
+            if item["event"] == "sources":
+                stage = "generating"
+            yield item
+    finally:
+        stop.set()
 
 
 def create_app(settings: Settings | None = None, atlas: CodeAtlas | None = None) -> FastAPI:
@@ -155,8 +206,12 @@ def create_app(settings: Settings | None = None, atlas: CodeAtlas | None = None)
     @app.post("/api/ask/stream")
     def ask_stream(req: AskRequest) -> StreamingResponse:
         setup, cfg = resolve(req)
-        events = labelled(atlas.engine.ask_stream(req.question, cfg), setup)
-        return StreamingResponse(_sse(events), media_type="text/event-stream")
+        events = with_heartbeat(labelled(atlas.engine.ask_stream(req.question, cfg), setup), settings.sse_heartbeat_s)
+        return StreamingResponse(
+            _sse(events),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},  # no proxy buffering
+        )
 
     @app.get("/api/impact")
     def impact(symbol: str, depth: int = 3) -> dict[str, Any]:

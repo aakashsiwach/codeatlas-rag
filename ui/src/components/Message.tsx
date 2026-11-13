@@ -2,8 +2,10 @@ import { Fragment, useEffect, useState } from "react";
 import type { Turn } from "../App";
 import { AnswerDone, Source, citationSegments, formatMs } from "../api";
 
-// Typical retrieval time per setup (dev p50, CPU). Setups not listed get the plain loading dots.
+// Typical retrieval time per setup (dev p50, CPU). Other setups get the plain loading dots, unless the API
+// reports a retrieval still running after SLOW_MS.
 const EXPECTED_MS: Record<string, number> = { quality: 30_000 };
+const SLOW_MS = 5_000;
 
 interface Props {
   turn: Turn;
@@ -75,13 +77,13 @@ function SourceList({ sources, selected, onOpenSource, title }: { sources: Sourc
 }
 
 /** Shown while a slow setup retrieves: elapsed time against the typical time. */
-function Progress({ setup, startedAt, expectedMs }: { setup: string; startedAt: number; expectedMs: number }) {
+function Progress({ setup, startedAt, expectedMs, server }: { setup: string; startedAt: number; expectedMs: number; server?: Turn["server"] }) {
   const [now, setNow] = useState(() => performance.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(performance.now()), 250);
     return () => clearInterval(timer);
   }, []);
-  const elapsed = Math.max(0, now - startedAt);
+  const elapsed = Math.max(0, now - startedAt, server?.elapsedMs ?? 0);
   const pct = Math.min(95, (elapsed / expectedMs) * 100);
   return (
     <div className="progress" role="status" data-testid="progress">
@@ -92,6 +94,11 @@ function Progress({ setup, startedAt, expectedMs }: { setup: string; startedAt: 
       <div className="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
         <div className="progress-bar" style={{ width: `${pct}%` }} />
       </div>
+      {server && server.elapsedMs > 0 && (
+        <div className="muted" data-testid="server-progress">
+          Server: still {server.stage} · {Math.floor(server.elapsedMs / 1000)} s
+        </div>
+      )}
       <div className="muted">
         Hybrid search, then the cross-encoder reranks the candidates and the code graph adds neighbours. Usually
         about {Math.round(expectedMs / 1000)} s on CPU{elapsed > expectedMs * 1.5 ? "; this one is taking longer" : ""}.
@@ -146,8 +153,13 @@ export function Message({ turn, selected, onOpenSource }: Props) {
           <div className="answer" data-testid="answer">
             {turn.text ? (
               <AnswerText text={turn.text} sources={turn.sources} onOpenSource={onOpenSource} />
-            ) : turn.retrievalMs === undefined && EXPECTED_MS[turn.setup] ? (
-              <Progress setup={turn.setup} startedAt={turn.startedAt} expectedMs={EXPECTED_MS[turn.setup]} />
+            ) : turn.retrievalMs === undefined && (EXPECTED_MS[turn.setup] || (turn.server?.elapsedMs ?? 0) >= SLOW_MS) ? (
+              <Progress
+                setup={turn.setup}
+                startedAt={turn.startedAt}
+                expectedMs={EXPECTED_MS[turn.setup] ?? 30_000}
+                server={turn.server}
+              />
             ) : (
               <div className="thinking" aria-label="Retrieving">
                 <span />

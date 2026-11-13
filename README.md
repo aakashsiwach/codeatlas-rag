@@ -406,7 +406,7 @@ only.
 | Method | Path | Purpose |
 |---|---|---|
 | `POST` | `/api/ask` | `{"question", "setup"?}` (`fast` or `quality`) or `{"question", "mode"?, "k"?}` → answer, citations, sources, confidence, usage, setup, timings (retrieval and total ms), trace id |
-| `POST` | `/api/ask/stream` | Same, as server-sent events: `sources`, `token`..., `done` |
+| `POST` | `/api/ask/stream` | Same, as server-sent events: `progress` (at once, then every 5 s while working, so proxies such as CloudFront never wait for a first byte), `sources`, `token`..., `done` |
 | `GET` | `/api/impact?symbol=Owner&depth=3` | Dependents of a class or method from the code graph |
 | `GET` | `/api/file?path=...&start=&end=` | Source lines for the citation viewer (path-traversal safe) |
 | `POST` | `/api/index` | `{"repo_path"?, "force"?}` — start an index run in the background |

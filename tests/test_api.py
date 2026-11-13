@@ -213,7 +213,7 @@ def test_ask_takes_a_named_setup_and_reports_it_with_timings(client, atlas):
     assert 0 <= answer["timings_ms"]["retrieval_ms"] <= answer["timings_ms"]["total_ms"]
 
     stream = client.post("/api/ask/stream", json={"question": "payment retry", "setup": "fast"})
-    events = [json.loads(line[6:]) for line in stream.text.splitlines() if line.startswith("data: {")]
+    events = [data for name, data in _events(stream.text) if name != "progress"]
     sources, done = events[0], events[-1]
     assert sources["setup"] == "fast" and sources["retrieval_ms"] >= 0
     assert (done["setup"], done["config"]) == ("fast", "vector") and done["timings_ms"]["total_ms"] >= 0
@@ -256,3 +256,48 @@ def test_ui_dir_without_a_build_fails_fast(atlas, tmp_path):
             create_app(atlas=atlas)
     finally:
         atlas.settings.ui_dir = None
+
+
+def _events(text: str) -> list[tuple[str, dict]]:
+    names = [line[7:] for line in text.splitlines() if line.startswith("event: ")]
+    data = [json.loads(line[6:]) for line in text.splitlines() if line.startswith("data: ")]
+    return list(zip(names, data))
+
+
+def test_stream_opens_at_once_and_sends_progress_while_retrieving(client, atlas, monkeypatch):
+    import time
+
+    atlas.settings.sse_heartbeat_s = 0.05
+    real = atlas.engine.ask_stream
+
+    def slow(question, cfg):  # a reranker that takes a while before the sources are ready
+        time.sleep(0.4)
+        yield from real(question, cfg)
+
+    monkeypatch.setattr(atlas.engine, "ask_stream", slow)
+    try:
+        resp = client.post("/api/ask/stream", json={"question": "payment retry", "setup": "fast"})
+    finally:
+        atlas.settings.sse_heartbeat_s = 5.0
+    assert resp.headers["cache-control"] == "no-cache"
+    events = _events(resp.text)
+    names = [name for name, _ in events]
+    assert names[0] == "progress" and events[0][1] == {"stage": "retrieving", "elapsed_ms": events[0][1]["elapsed_ms"]}
+    before_sources = names[: names.index("sources")]
+    assert set(before_sources) == {"progress"} and len(before_sources) >= 4
+    elapsed = [data["elapsed_ms"] for name, data in events if name == "progress"]
+    assert elapsed == sorted(elapsed) and elapsed[-1] >= 300
+    assert names[-1] == "done" and events[-1][1]["setup"] == "fast"
+
+
+def test_stream_reports_errors_raised_behind_the_heartbeat(client, atlas, monkeypatch):
+    from codeatlas.llm import LLMError
+
+    def failing(question, cfg):
+        yield {"event": "sources", "data": {"sources": [], "confidence": 0.9, "confidence_source": "vector"}}
+        raise LLMError("throttled", "bedrock:m", "ThrottlingException", "slow down")
+
+    monkeypatch.setattr(atlas.engine, "ask_stream", failing)
+    names_and_data = _events(client.post("/api/ask/stream", json={"question": "anything"}).text)
+    assert [n for n, _ in names_and_data] == ["progress", "sources", "error"]
+    assert names_and_data[-1][1]["kind"] == "throttled"

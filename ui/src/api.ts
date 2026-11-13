@@ -69,6 +69,7 @@ export type StreamEvent =
       event: "sources";
       data: { sources: Source[]; confidence: number; confidence_source: string; retrieval_ms?: number; setup?: string | null };
     }
+  | { event: "progress"; data: { stage: string; elapsed_ms: number } } // every few seconds while retrieving
   | { event: "token"; data: string }
   | { event: "done"; data: AnswerDone }
   | { event: "error"; data: { detail: string; kind?: string; error_class?: string } };

@@ -104,6 +104,9 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:5173"]
     # Directory with the built web UI (ui/dist). When set, the API serves it at / (one container, one origin).
     ui_dir: Path | None = None
+    # Seconds between `progress` events on /api/ask/stream while nothing else is sent. Keeps proxies with a
+    # first-byte or idle timeout (CloudFront: 60 s) from cutting off slow (quality-setup) retrievals.
+    sse_heartbeat_s: float = 5.0
     # Bearer token required on every /api/* route when set (the GitHub webhook uses its HMAC instead).
     api_token: str | None = None
     # `codeatlas serve` refuses a non-loopback host without api_token unless this is set, e.g. in a

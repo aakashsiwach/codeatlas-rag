@@ -72,6 +72,8 @@ describe("fast | quality setup switch", () => {
     await ask("How are pets added?");
     expect(askedBody()).toEqual({ question: "How are pets added?", setup: "fast" });
     expect(screen.queryByTestId("progress")).toBeNull(); // fast keeps the plain loading dots
+    stream.push(sse("progress", { stage: "retrieving", elapsed_ms: 6_000 })); // unless the API says it is slow
+    expect((await screen.findByTestId("server-progress")).textContent).toBe("Server: still retrieving · 6 s");
   });
 
   it("asks one question with quality, shows progress, then the setup and latency", async () => {
@@ -86,6 +88,10 @@ describe("fast | quality setup switch", () => {
     expect(progress.textContent).toContain("Retrieving with the quality setup");
     expect(screen.getByRole("progressbar")).toBeTruthy();
     expect((screen.getByTestId("setup-fast") as HTMLButtonElement).disabled).toBe(true); // no switching mid-question
+
+    stream.push(sse("progress", { stage: "retrieving", elapsed_ms: 0 }));
+    stream.push(sse("progress", { stage: "retrieving", elapsed_ms: 10_012 }));
+    expect((await screen.findByTestId("server-progress")).textContent).toBe("Server: still retrieving · 10 s");
 
     stream.push(sse("sources", { sources: [source], confidence: 0.93, confidence_source: "rerank", retrieval_ms: 27199.5, setup: "quality" }));
     await waitFor(() => expect(screen.queryByTestId("progress")).toBeNull());

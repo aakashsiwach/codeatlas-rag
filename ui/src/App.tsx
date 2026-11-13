@@ -11,6 +11,7 @@ export interface Turn {
   setup: string; // the named setup used, or "custom"
   startedAt: number; // performance.now() when asked
   retrievalMs?: number; // set when the sources arrive
+  server?: { stage: string; elapsedMs: number }; // the latest progress event from the API
   status: "streaming" | "done" | "error";
   text: string;
   sources: Source[];
@@ -84,7 +85,9 @@ export default function App() {
     try {
       const target = custom ? { mode, k } : { setup };
       await askStream(question, { ...target, token: settings.token, signal: abort.current.signal }, (ev) => {
-        if (ev.event === "sources")
+        if (ev.event === "progress")
+          update(id, (t) => ({ ...t, server: { stage: ev.data.stage, elapsedMs: ev.data.elapsed_ms } }));
+        else if (ev.event === "sources")
           update(id, (t) => ({
             ...t,
             sources: ev.data.sources,

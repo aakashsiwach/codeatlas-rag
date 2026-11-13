@@ -26,7 +26,7 @@ Run all of these before opening a pull request. CI runs the same ones.
 ruff check .                                  # lint
 pytest -q                                     # Python tests: offline, no models or API keys needed
 cd ui && npm run typecheck && npm test        # UI type check and unit tests (Vitest)
-npx playwright install chromium && npm run e2e  # end-to-end smoke test (optional locally)
+npx playwright install chromium && npm run e2e  # end-to-end smoke test (optional locally; CI runs it)
 ```
 
 `make check` (or `./tasks.ps1 check` on Windows) runs the lint, Python tests, UI type check and UI unit

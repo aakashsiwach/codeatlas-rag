@@ -14,6 +14,8 @@ All notable changes to this project are documented here. The format follows
   advisories left in 1.0.0 were all inside Vitest 2's own dependencies (an old Vite 5 and esbuild).
 - The Vitest workers run with `--no-experimental-webstorage`: Node 25+ defines its own `localStorage`
   global, which hides jsdom's in tests.
+- CI runs the Playwright smoke test on Node 24 and 26 (the API on the fixture repository with the offline
+  LLM), so dependency upgrades that break the dev server or the browser fail CI.
 
 ## [1.0.0] - 2026-11-14
 

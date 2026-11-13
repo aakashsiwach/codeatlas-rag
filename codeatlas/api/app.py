@@ -8,6 +8,7 @@ import logging
 import queue
 import threading
 import time
+from collections import OrderedDict
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -118,6 +119,9 @@ def create_app(settings: Settings | None = None, atlas: CodeAtlas | None = None)
 
     app = FastAPI(title="CodeAtlas", version=__version__)
     app.state.atlas = atlas
+    # Recent X-GitHub-Delivery ids: a redelivered or replayed push (valid signature, same id) is not
+    # re-indexed twice. Bounded, in memory: enough for retries, not a durable log.
+    seen_deliveries: OrderedDict[str, None] = OrderedDict()
 
     @app.middleware("http")
     async def require_token(request: Request, call_next):
@@ -284,12 +288,19 @@ def create_app(settings: Settings | None = None, atlas: CodeAtlas | None = None)
         background: BackgroundTasks,
         x_github_event: str = Header(default=""),
         x_hub_signature_256: str | None = Header(default=None),
+        x_github_delivery: str | None = Header(default=None),
     ) -> dict[str, Any]:
         if not settings.webhook_secret:
             raise HTTPException(503, "Webhook secret is not configured (CODEATLAS_WEBHOOK_SECRET)")
         body = await request.body()
         if not verify_signature(settings.webhook_secret, body, x_hub_signature_256):
             raise HTTPException(401, "Invalid signature")
+        if x_github_delivery:
+            if x_github_delivery in seen_deliveries:
+                return {"status": "duplicate", "delivery": x_github_delivery}
+            seen_deliveries[x_github_delivery] = None
+            while len(seen_deliveries) > 1000:
+                seen_deliveries.popitem(last=False)
         if x_github_event == "ping":
             return {"status": "pong"}
         if x_github_event != "push":

@@ -312,3 +312,16 @@ def test_config_names_the_offline_provider_like_the_llm_does():
     assert llm_label(fake) == build_llm(fake).name == "fake:offline"
     assert llm_label(Settings(_env_file=None, llm_provider="none")) is None
     assert llm_label(Settings(_env_file=None, llm_provider="bedrock", llm_model="m")) == "bedrock:m"
+
+
+def test_webhook_ignores_a_replayed_delivery(client, atlas, monkeypatch):
+    calls = []
+    monkeypatch.setattr(atlas, "sync_from_push", lambda paths: calls.append(paths))
+    body = json.dumps({"ref": "refs/heads/main", "commits": [{"added": [], "modified": ["a.java"], "removed": []}]}).encode()
+    headers = {"X-GitHub-Event": "push", "X-Hub-Signature-256": sign(body), "Content-Type": "application/json"}
+    first = client.post("/api/webhook/github", content=body, headers={**headers, "X-GitHub-Delivery": "d-1"})
+    again = client.post("/api/webhook/github", content=body, headers={**headers, "X-GitHub-Delivery": "d-1"})
+    other = client.post("/api/webhook/github", content=body, headers={**headers, "X-GitHub-Delivery": "d-2"})
+    assert first.json()["status"] == "accepted" and other.json()["status"] == "accepted"
+    assert again.status_code == 202 and again.json() == {"status": "duplicate", "delivery": "d-1"}
+    assert len(calls) == 2

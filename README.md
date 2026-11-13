@@ -363,6 +363,13 @@ the fixture repository in `tests/fixtures/shop`.
   beans wired only in configuration, and overloaded methods share a node.
 - Endpoint matching covers Spring MVC annotations, Feign clients and URL string literals. It does not
   cover URLs built at runtime or read from configuration.
+- Refusing on retrieval confidence has a thin margin: the confidence ranges of answerable and unanswerable
+  questions overlap. On dev, ModernBERT rerank scores were 0.834-0.961 for answerable and 0.489-0.866 for
+  unanswerable questions, so the 0.868 threshold also refuses 4 of 33 answerable ones. Vector similarity
+  overlaps more (0.620-0.797 vs 0.594-0.764): at 0.6177, fast refuses only 4 of 7 unanswerable questions.
+  The thresholds also rest on just 7 unanswerable dev questions. The second safeguard is the LLM itself:
+  the prompt requires answers grounded in the retrieved blocks and an explicit "I don't know" when they
+  do not contain the answer.
 
 ## Roadmap
 

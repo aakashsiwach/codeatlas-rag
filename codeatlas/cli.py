@@ -359,6 +359,57 @@ def serve(
     uvicorn.run(create_app(settings), host=host, port=port)
 
 
+@app.command()
+def demo(
+    ctx: typer.Context,
+    repo: Path = typer.Option(Path("repos/spring-petclinic"), "--repo", help="Where PetClinic is, or will be cloned"),
+    port: int = typer.Option(8000, help="Port for the API and the UI (on 127.0.0.1)"),
+    ui: bool = typer.Option(True, "--ui/--no-ui", help="Build and serve the web UI (needs Node 18+)"),
+    keep_llm: bool = typer.Option(
+        False, "--keep-llm", help="Use the configured LLM provider instead of the offline fake one"
+    ),
+) -> None:
+    """One command to a running demo: clone PetClinic at the evaluated revision if missing, index it, and serve
+    the API and the web UI on http://127.0.0.1:PORT with the offline fake LLM (no keys, no paid calls)."""
+    from codeatlas.demo import build_ui, ensure_repo
+
+    def say(message: str) -> None:
+        typer.secho(f"[demo] {message}", fg=typer.colors.CYAN)
+
+    settings = _settings(ctx)
+    try:
+        ensure_repo(repo, say)
+    except Exception as exc:  # noqa: BLE001 - git missing or the clone failed: explain and stop
+        typer.secho(f"could not prepare {repo}: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1) from exc
+    updates: dict = {"repo_path": repo.resolve()}
+    if not keep_llm:
+        updates.update(llm_provider="fake", llm_model="offline")
+    if ui:
+        try:
+            ui_dir = build_ui(say)
+        except Exception as exc:  # noqa: BLE001 - a failed UI build should not stop the API demo
+            say(f"web UI build failed ({exc}); serving the API only")
+            ui_dir = None
+        if ui_dir is not None:
+            updates["ui_dir"] = ui_dir
+    settings = settings.model_copy(update=updates)
+    ctx.obj = settings
+
+    atlas = _atlas(ctx)
+    say(f"indexing {repo} (only changed files are re-embedded) ...")
+    stats = atlas.index(repo.resolve())
+    say(f"{stats.mode} index: {stats.files_changed} of {stats.files_scanned} files changed, {stats.chunks_written} chunks embedded")
+
+    import uvicorn
+
+    from codeatlas.api.app import create_app
+
+    where = f"http://127.0.0.1:{port}"
+    say(f"LLM {settings.llm_provider}:{settings.llm_model} | API {where}/api | UI {where if 'ui_dir' in updates else 'not built'}")
+    uvicorn.run(create_app(atlas=atlas), host="127.0.0.1", port=port)
+
+
 def is_held_out(eval_set: Path) -> bool:
     """Held-out test splits are named *-test.yaml / *-test.yml."""
     return eval_set.stem.lower().endswith("-test") and eval_set.suffix.lower() in (".yaml", ".yml")

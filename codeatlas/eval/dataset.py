@@ -10,6 +10,7 @@ YAML format:
           - owner/OwnerController.java::OwnerController.processFindForm
           - owner/OwnerRepository.java
         reference_answer: optional free text used by the LLM judge
+        reviewed: true           # the judge only uses reference answers marked as reviewed
       - id: no-graphql
         question: Where is the GraphQL schema defined?
         answerable: false        # the system should refuse
@@ -82,6 +83,7 @@ class EvalItem:
     category: str = "general"
     reference_answer: str | None = None
     answerable: bool = True
+    reference_reviewed: bool = True  # drafted references stay unused until a person marks them reviewed
 
 
 def load_eval_set(path: Path | str) -> list[EvalItem]:
@@ -96,6 +98,7 @@ def load_eval_set(path: Path | str) -> list[EvalItem]:
                 category=raw.get("category", "general"),
                 reference_answer=raw.get("reference_answer"),
                 answerable=bool(raw.get("answerable", True)),
+                reference_reviewed=bool(raw.get("reviewed", True)),
             )
         )
     return items

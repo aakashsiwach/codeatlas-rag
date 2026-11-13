@@ -232,7 +232,7 @@ def evaluate(
                             item.question,
                             answer.answer,
                             answer.context,
-                            item.reference_answer,
+                            item.reference_answer if item.reference_reviewed else None,
                             thinking=thinking_for(atlas.settings, "judge"),
                         )
                     except LLMError as exc:
@@ -343,6 +343,11 @@ def run_metadata(
         "eval_set": display_path(eval_set),
         "questions": len(items),
         "answerable": sum(1 for i in items if i.answerable),
+        # The judge uses a reference answer only when it is marked reviewed.
+        "reference_answers_reviewed": (
+            f"{sum(1 for i in items if i.reference_answer and i.reference_reviewed)}"
+            f"/{sum(1 for i in items if i.reference_answer)}"
+        ),
         "chunker": atlas.store.get_meta("chunker"),
         "embedder": atlas.store.get_meta("embedder"),
         "reranker": settings.reranker_model or None,

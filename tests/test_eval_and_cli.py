@@ -336,3 +336,24 @@ def test_eval_items_record_the_confidence_and_threshold_used(atlas):
     for r in report.items:
         assert r.confidence_source == "vector" and r.threshold_key == "hashing-512"  # graph never overrides it
         assert r.threshold == atlas.settings.min_vector_similarity and r.confidence is not None
+
+
+def test_judge_sees_a_reference_answer_only_once_reviewed(atlas, tmp_path):
+    eval_file = tmp_path / "refs.yaml"
+    eval_file.write_text(
+        "questions:\n"
+        "  - id: draft\n    question: Where is the payment retry logic?\n    category: locate\n"
+        "    expected_sources: [payment/PaymentService.java]\n"
+        "    reference_answer: DRAFT-REFERENCE\n    reviewed: false\n"
+        "  - id: checked\n    question: Where is the payment retry logic implemented?\n    category: locate\n"
+        "    expected_sources: [payment/PaymentService.java]\n"
+        "    reference_answer: REVIEWED-REFERENCE\n    reviewed: true\n",
+        encoding="utf-8",
+    )
+    items = load_eval_set(eval_file)
+    assert [i.reference_reviewed for i in items] == [False, True]
+    judge = FakeLLM('{"claims": 1, "supported": 1, "correct": true}')
+    evaluate(atlas, items, RetrievalConfig.parse("hybrid", k=5), judge=judge)
+    assert not any("DRAFT-REFERENCE" in p for p in judge.prompts)
+    assert any("REVIEWED-REFERENCE" in p for p in judge.prompts)
+    assert run_metadata(atlas, eval_file, items)["reference_answers_reviewed"] == "1/2"

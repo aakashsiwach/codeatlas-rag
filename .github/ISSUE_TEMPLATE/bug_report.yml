@@ -1,0 +1,50 @@
+name: Bug report
+description: Something does not work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please do not paste API keys, tokens or `.env` contents.
+        Security problems go through private reporting instead (see SECURITY.md).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Commands or API requests, with the repository indexed (e.g. PetClinic at 500158f).
+      placeholder: |
+        codeatlas index repos/spring-petclinic
+        codeatlas ask "..." --mode hybrid+rerank+graph
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `codeatlas doctor`
+      description: It prints configuration names and versions, never secrets.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: CodeAtlas version or commit
+      placeholder: 1.0.0 / abc1234
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where
+      multiple: true
+      options: [CLI, HTTP API, Web UI, Evaluation, Docker, Terraform / AWS]
+  - type: input
+    id: env
+    attributes:
+      label: OS, Python and Node versions
+      placeholder: Windows 11, Python 3.12.10, Node 20.18

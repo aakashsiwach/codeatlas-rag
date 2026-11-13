@@ -4,6 +4,8 @@
 
 ![CodeAtlas answering a question about Spring PetClinic, with a cited source open](docs/demo.gif)
 
+*Retrieval demo (offline LLM): a `fast` answer, the same impact question in `quality` mode with its progress bar, a citation opening the source viewer, and an "I don't know" refusal. Answers come from the offline stand-in, so they only cite the retrieved blocks. Retrieval, citations and refusal are real.*
+
 **Held-out test result** vs a naive fixed-size-chunk vector baseline: **recall@5 0.70 → 0.81**,
 **MRR 0.63 → 0.70**, **impact-question recall 0.42 → 0.85** ([details](#results)).
 
@@ -117,6 +119,14 @@ paid calls: `CODEATLAS_LLM_PROVIDER=fake` is an offline stand-in that cites the 
 calling a model. Swap it for [Ollama](#real-answers-with-ollama-local-free) or
 [Bedrock](#real-answers-with-amazon-bedrock) for real answers.
 
+**Fastest path.** After installing (first two steps of either block below), one command clones PetClinic
+at the evaluated revision if it is missing, indexes it, builds the UI and serves everything on
+http://127.0.0.1:8000 with the offline LLM:
+
+```bash
+codeatlas demo
+```
+
 **Windows (PowerShell)**
 
 ```powershell
@@ -181,7 +191,8 @@ cd ui && npm install && npm run dev          # terminal 2
 
 ### Real answers with Ollama (local, free)
 
-Ollama's OpenAI-compatible endpoint works through the `openai` provider. Raise Ollama's context window:
+Ollama's OpenAI-compatible endpoint works through the `openai` provider. These commands follow Ollama's
+documented setup, but unlike the blocks above they are not run by CI or by the release checks. Raise Ollama's context window:
 its default can be smaller than CodeAtlas's prompt (instructions plus five code blocks), and Ollama
 truncates the prompt silently.
 
@@ -204,7 +215,8 @@ codeatlas ask "How does searching for owners by last name work?"
 
 ### Real answers with Amazon Bedrock
 
-You need model access for the model in your AWS account. Credentials come from a named profile in
+You need model access for the model in your AWS account. Like the Ollama commands, these are not run by
+CI, because Bedrock calls are billed. Credentials come from a named profile in
 `~/.aws`, never from `.env`. Bedrock bills every call, including the 1-token `doctor --llm` check.
 
 ```powershell
@@ -234,6 +246,18 @@ curl -X POST localhost:8000/api/index -H 'content-type: application/json' -d '{}
 ```
 
 To deploy to AWS (ECS Fargate behind CloudFront, Terraform), see [docs/deploy.md](docs/deploy.md).
+
+## Documentation
+
+| Guide | What it covers |
+|---|---|
+| [Architecture](docs/architecture.md) | Components, the ingestion and query paths, named setups |
+| [Evaluation](docs/evaluation.md) | Question set, scoring rule, dev/test split, and how to reproduce every number below |
+| [Configuration](docs/configuration.md) | Every `CODEATLAS_*` setting with its default (generated from the code) |
+| [HTTP API](docs/api.md) | Endpoints, authentication, server-sent events; [openapi.json](docs/openapi.json) |
+| [Deploy to AWS](docs/deploy.md) | ECS Fargate + CloudFront with Terraform, a demo session and its cost, teardown |
+| [Troubleshooting](docs/troubleshooting.md) | Index lock, Windows paths, provider errors and what they mean |
+| [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md) | How to help, how to report a vulnerability, what changed |
 
 ## Retrieval modes
 
@@ -329,6 +353,9 @@ and `.json` containing:
   endpoint-caller questions.
 - **Weakest questions per setup:** expected vs. retrieved sources, for failure analysis.
 
+[docs/evaluation.md](docs/evaluation.md) lists the exact command and commit behind every number in this
+section.
+
 ### Frozen setups
 
 Frozen on the dev split before the test split was run; nothing below changed after seeing test numbers.
@@ -403,6 +430,8 @@ only.
 
 ## HTTP API
 
+Full reference: [docs/api.md](docs/api.md).
+
 | Method | Path | Purpose |
 |---|---|---|
 | `POST` | `/api/ask` | `{"question", "setup"?}` (`fast` or `quality`) or `{"question", "mode"?, "k"?}` → answer, citations, sources, confidence, usage, setup, timings (retrieval and total ms), trace id |
@@ -458,7 +487,8 @@ names another interpreter; `SCREENSHOTS_DIR=screenshots npm run e2e` also saves 
 ## Configuration
 
 All settings are environment variables prefixed with `CODEATLAS_` (or entries in `.env`). See
-[.env.example](.env.example).
+[.env.example](.env.example) to start, and [docs/configuration.md](docs/configuration.md) for every
+setting. The most important ones:
 
 | Setting | Default | Notes |
 |---|---|---|
@@ -483,22 +513,27 @@ codeatlas/
   retrieval/   code tokenizer, BM25, cross-encoder reranker, query rewriter, hybrid retriever
   graph.py     call/dependency graph and impact analysis
   answer.py    prompting, citation validation, refusal
-  llm.py       Anthropic / OpenAI / Bedrock providers
-  eval/        datasets, metrics, LLM judge, comparison runner
+  llm.py       Anthropic / OpenAI / Bedrock / offline providers, errors, prices
+  eval/        datasets, metrics, LLM judge, comparison runner, judged-run helpers
   api/         FastAPI app and GitHub webhook
-  cli.py       `codeatlas` command
-eval/          evaluation sets
+  cli.py       `codeatlas` command;  demo.py: `codeatlas demo`;  doctor.py: `codeatlas doctor`
+eval/          evaluation sets (PetClinic dev and held-out test splits)
+results/       committed evaluation reports behind the README numbers
 ui/            React chat client (Vite) with Vitest and Playwright tests
+docs/          architecture, evaluation, configuration, API, deployment, troubleshooting
+infra/         Terraform for ECS Fargate + CloudFront + Bedrock
+scripts/       judged-run scripts, doc generators, demo GIF tooling
 tests/         pytest suite with a small Spring Boot fixture repository
 ```
 
 ## Development
 
 ```bash
-pip install -e ".[dev]"
-ruff check .
-pytest
+pip install -c requirements-lock.txt -e ".[local,openai,bedrock,dev]"
+make check            # Windows: ./tasks.ps1 check  (ruff, pytest, UI type check and unit tests)
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the end-to-end test, the generated files and the evaluation rules.
 
 The test suite runs fully offline: it uses the hashing embedder, in-memory Qdrant and a fake LLM against
 the fixture repository in `tests/fixtures/shop`.
@@ -519,11 +554,20 @@ the fixture repository in `tests/fixtures/shop`.
 
 ## Roadmap
 
-- React + TypeScript chat UI with clickable citations and a code viewer (the API already exposes
-  `/api/ask/stream` and `/api/file`)
-- OpenTelemetry / Langfuse trace export
-- AWS deployment (ECS + S3) with Terraform
-- Neo4j backend for very large graphs; Kotlin support
+- **Answer-quality results:** LLM-judged faithfulness, citation precision and refusal accuracy on the test
+  split, once the reference answers are reviewed ([scripts/run-judge.ps1](scripts/run-judge.ps1)).
+- **Retrieval fixes from the review backlog.** Each changes retrieval, so it needs a new dev cycle and a new
+  frozen split:
+  - request mappings that use constants (`@GetMapping(Paths.OWNER)`)
+  - one graph node per overload
+  - implementations in the impact of an interface method
+  - rerank confidence computed after test code is demoted
+- **Graph report order:** list main-code dependents before test code. Today the report is sorted by
+  package, so a test class can come first.
+- **A faster quality setup:** a GPU, or a lighter reranker, measured on a new split.
+- **Cross-service evaluation** (Feign clients) on spring-petclinic-microservices.
+- **Integrations:** OpenTelemetry / Langfuse trace export, a Neo4j backend for very large graphs, and
+  Kotlin support.
 
 ## License
 

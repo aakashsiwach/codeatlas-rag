@@ -18,8 +18,13 @@ def _settings(ctx: typer.Context) -> Settings:
 
 def _atlas(ctx: typer.Context):
     from codeatlas.atlas import CodeAtlas
+    from codeatlas.storage.vector_store import IndexLockedError
 
-    return CodeAtlas(_settings(ctx))
+    try:
+        return CodeAtlas(_settings(ctx))
+    except IndexLockedError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED)
+        raise typer.Exit(3) from exc
 
 
 @app.callback()

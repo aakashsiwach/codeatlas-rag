@@ -11,6 +11,10 @@ from codeatlas.config import Settings
 from codeatlas.models import Chunk
 
 
+class IndexLockedError(RuntimeError):
+    """The embedded index is open in another process (embedded Qdrant allows one process at a time)."""
+
+
 class VectorStore:
     def __init__(self, client: QdrantClient, collection: str, dim: int):
         self.client = client
@@ -27,7 +31,16 @@ class VectorStore:
         else:
             path = settings.index_dir / "qdrant"
             path.mkdir(parents=True, exist_ok=True)
-            client = QdrantClient(path=str(path))
+            try:
+                client = QdrantClient(path=str(path))
+            except RuntimeError as exc:
+                if "already accessed" not in str(exc):
+                    raise
+                raise IndexLockedError(
+                    f"The index at {settings.index_dir} is in use by another CodeAtlas process (for example "
+                    "`codeatlas serve` or another eval). Stop it, use a different --index-dir, or set "
+                    "CODEATLAS_QDRANT_URL to a Qdrant server for concurrent access."
+                ) from exc
         return cls(client, settings.collection, dim)
 
     def ensure_collection(self) -> None:

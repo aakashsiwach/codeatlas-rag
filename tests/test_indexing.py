@@ -89,3 +89,24 @@ def test_links_that_leave_the_repo_are_not_indexed(tmp_path, repo):
     assert "docs/ext/credentials.txt" not in paths
     assert load_source_file(repo, "docs/ext/credentials.txt", [], 1_000_000) is None  # webhook path too
     assert load_source_file(repo, "docs/same/0001-payment-retries.md", [], 1_000_000) is not None
+
+
+def test_a_locked_embedded_index_gives_a_clear_error(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from codeatlas.cli import app
+    from codeatlas.config import Settings
+    from codeatlas.storage.vector_store import IndexLockedError, VectorStore
+
+    settings = Settings(_env_file=None, index_dir=tmp_path / "idx", qdrant_url=None)
+    holder = VectorStore.from_settings(settings, 8)  # e.g. a running `codeatlas serve`
+    with pytest.raises(IndexLockedError, match="in use by another CodeAtlas process"):
+        VectorStore.from_settings(settings, 8)
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CODEATLAS_EMBEDDING_PROVIDER", "hashing")
+    monkeypatch.setenv("CODEATLAS_RERANKER_MODEL", "")
+    monkeypatch.delenv("CODEATLAS_QDRANT_URL", raising=False)
+    result = CliRunner().invoke(app, ["--index-dir", str(tmp_path / "idx"), "stats"])
+    assert result.exit_code == 3 and "--index-dir" in result.output and "Traceback" not in result.output
+    holder.client.close()

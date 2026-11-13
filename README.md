@@ -176,8 +176,8 @@ codeatlas eval eval/petclinic-dev.yaml -k 5 --deep-k 10 --configs vector,hybrid,
 
 # 6. Once the setup is frozen: the held-out test split, then answer quality for the chosen setup
 #    (repeat the judged run 2-3 times; judge scores vary)
-codeatlas eval eval/petclinic-test.yaml -k 5 --deep-k 10 --configs <frozen setup>
-codeatlas eval eval/petclinic-test.yaml -k 5 --configs <frozen setup> --judge
+codeatlas eval eval/petclinic-test.yaml -k 5 --deep-k 10 --configs vector,hybrid+rerank+graph --final
+codeatlas eval eval/petclinic-test.yaml -k 5 --configs hybrid+rerank+graph --judge --final
 ```
 
 Retrieval metrics (recall@k, hit@k, MRR) do not call the LLM, so they are cheap and repeatable. The
@@ -194,6 +194,28 @@ and `.json` containing:
 - **Recall by category:** shows *where* a technique helps, for example the graph on the impact and
   endpoint-caller questions.
 - **Weakest questions per setup:** expected vs. retrieved sources, for failure analysis.
+
+### Frozen setups
+
+Frozen on the dev split before the test split was run; nothing below changed after seeing test numbers.
+Both use AST chunks, `bge-small-en-v1.5` embeddings and k = 5, with test code ranked below main code and
+class outlines below their methods.
+
+| Setup | Mode | Reranker | Refusal threshold | Dev recall@5 | recall@10 | hit@5 | MRR | p50 |
+|---|---|---|---|---|---|---|---|---|
+| **fast** (API/UI default) | `vector` | none | vector similarity 0.6177 | 0.816 | 0.919 | 1.000 | 0.665 | 27 ms |
+| **quality** | `hybrid+rerank+graph` | `Alibaba-NLP/gte-reranker-modernbert-base`, top 20 candidates | rerank score 0.868 | 0.894 | 0.967 | 1.000 | 0.791 | 27 s (CPU) |
+
+`quality` reserves 2 of the top 5 for code-graph neighbours (`graph_slots=2`). `fast` is the best dev
+setup without a reranker (hybrid without the reranker: recall@5 0.808, hit@5 0.970). The thresholds are
+the balanced-accuracy optimum on dev (`--calibrate`), from only 7 unanswerable dev questions. These are
+the code defaults, so neither needs extra options:
+
+```bash
+codeatlas ask "..."                                   # fast
+codeatlas ask "..." --mode hybrid+rerank+graph        # quality
+codeatlas eval eval/petclinic-test.yaml -k 5 --deep-k 10 --configs vector,hybrid+rerank+graph --final
+```
 
 ### Results
 
@@ -277,12 +299,12 @@ All settings are environment variables prefixed with `CODEATLAS_` (or entries in
 | `INDEX_DIR` | `.codeatlas` | SQLite store, embedded Qdrant and `traces.jsonl` |
 | `QDRANT_URL` | embedded | Set to a Qdrant server URL for the API/Docker setup |
 | `EMBEDDING_PROVIDER` / `EMBEDDING_MODEL` | `local` / `BAAI/bge-small-en-v1.5` | `openai`, `voyage` (e.g. `voyage-code-3`) or `hashing` (offline) |
-| `RERANKER_MODEL` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Empty disables reranking |
+| `RERANKER_MODEL` | `Alibaba-NLP/gte-reranker-modernbert-base` | Used by `+rerank` modes; empty disables reranking. ~0.6 GB download, slow on CPU (~27 s/query) |
 | `LLM_PROVIDER` / `LLM_MODEL` | `anthropic` / – | `openai` (with `LLM_BASE_URL` for compatible servers) or `bedrock` |
-| `DEFAULT_MODE` | `hybrid+graph` | Any mode spec |
+| `DEFAULT_MODE` / `DEFAULT_K` | `vector` / `5` | Any mode spec; `vector` is the frozen `fast` setup, `hybrid+rerank+graph` the `quality` one |
 | `MIN_VECTOR_SIMILARITY` | `0.30` | Refusal threshold without reranking |
 | `MIN_RERANK_CONFIDENCE` | `0.05` | Refusal threshold with reranking; tune with the unanswerable eval questions |
-| `MIN_CONFIDENCE_BY_MODEL` | none | JSON per embedder or reranker model, overriding the two above; calibrate on dev with `codeatlas eval … --calibrate`. The code graph never raises confidence |
+| `MIN_CONFIDENCE_BY_MODEL` | bge-small `0.6177`, ModernBERT `0.868` | JSON per embedder or reranker model, overriding the two above; calibrate on dev with `codeatlas eval … --calibrate`. The code graph never raises confidence |
 | `LLM_PRICES` | none | JSON prices per `"<provider>:<model>"` (`input_per_mtok`, `output_per_mtok`); Bedrock and the Anthropic API are separate entries. Unlisted models report cost as `unpriced`, never $0. Eval reports sum answer and judge cost |
 | `EMBEDDING_COST_PER_MTOK` | `0` | Price used for index-run embedding cost |
 

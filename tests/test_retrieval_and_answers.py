@@ -22,10 +22,10 @@ def test_retrieval_config_parsing():
 
 def test_ranking_options_are_typed_and_named():
     flipped = not RetrievalConfig().demote_tests
-    opts = RetrievalConfig.parse_options([f"demote_tests={'on' if flipped else 'off'}", "rerank_pool=20"])
-    assert opts == {"demote_tests": flipped, "rerank_pool": 20}
+    opts = RetrievalConfig.parse_options([f"demote_tests={'on' if flipped else 'off'}", "rerank_pool=15"])
+    assert opts == {"demote_tests": flipped, "rerank_pool": 15}
     cfg = RetrievalConfig.parse("hybrid+rerank", **opts)
-    assert cfg.name == f"hybrid+rerank[rerank_pool=20,demote_tests={flipped}]"
+    assert cfg.name == f"hybrid+rerank[rerank_pool=15,demote_tests={flipped}]"
     for bad in (["k=3"], ["demote_tests"], ["demote_tests=maybe"]):
         with pytest.raises(ValueError):
             RetrievalConfig.parse_options(bad)

@@ -42,7 +42,7 @@ class RetrievalConfig:
     rewrite: bool = False
     k: int = 8
     candidates: int = 40
-    rerank_pool: int = 30
+    rerank_pool: int = 20
     graph_depth: int = 3
     demote_tests: bool = True  # rank test code below main code unless the query is about tests
     outlines_after_methods: bool = True  # a class outline ranks below its own retrieved methods

@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     embedding_cost_per_mtok: float = 0.0
 
     # Reranking (cross-encoder, requires the "local" extra). Empty string disables it.
-    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    reranker_model: str = "Alibaba-NLP/gte-reranker-modernbert-base"
 
     # Generation: anthropic | openai | bedrock | none
     llm_provider: str = "anthropic"
@@ -80,13 +80,19 @@ class Settings(BaseSettings):
     thinking_by_model: dict[str, dict[str, str]] = {}
 
     # Retrieval defaults and hallucination controls
-    default_mode: str = "hybrid+graph"
-    default_k: int = 8
+    # Frozen on the dev split (README, "Frozen setups"): `fast` (vector) is the default;
+    # `quality` is hybrid+rerank+graph with the reranker above.
+    default_mode: str = "vector"
+    default_k: int = 5
     min_vector_similarity: float = 0.30
     min_rerank_confidence: float = 0.05
     # Per-model refusal thresholds, as JSON {"<embedder name or reranker model>": <threshold>}; they override
     # the two above for that model. Calibrate them on a dev split with `codeatlas eval --calibrate`.
-    min_confidence_by_model: dict[str, float] = {}
+    # Defaults calibrated on dev for the two frozen setups.
+    min_confidence_by_model: dict[str, float] = {
+        "local:BAAI/bge-small-en-v1.5": 0.6177,
+        "Alibaba-NLP/gte-reranker-modernbert-base": 0.868,
+    }
 
     # API, webhook and tracing
     cors_origins: list[str] = ["http://localhost:5173"]

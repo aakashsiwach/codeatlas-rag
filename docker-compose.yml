@@ -18,7 +18,7 @@ services:
       CODEATLAS_QDRANT_URL: http://qdrant:6333
       CODEATLAS_INDEX_DIR: /data/index
       CODEATLAS_REPO_PATH: /repo
-      CODEATLAS_DEFAULT_MODE: hybrid+rerank+graph
+      CODEATLAS_DEFAULT_MODE: vector
       # The container listens on 0.0.0.0, but the port below is published on the host's loopback
       # interface only. Set CODEATLAS_API_TOKEN (in .env) before publishing it more widely.
       CODEATLAS_ALLOW_UNAUTHENTICATED: "true"

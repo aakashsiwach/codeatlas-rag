@@ -46,7 +46,10 @@ export default function App() {
       );
   }, [settings.token]);
 
-  useEffect(() => bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" }), [turns]);
+  // Block body: newer browsers return a Promise from scrollIntoView, and an effect may only return a cleanup.
+  useEffect(() => {
+    bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [turns]);
 
   const update = useCallback((id: number, patch: (t: Turn) => Turn) => {
     setTurns((all) => all.map((t) => (t.id === id ? patch(t) : t)));

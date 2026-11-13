@@ -25,7 +25,9 @@ export function SourceViewer({ source, token, onClose }: Props) {
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   }, [source, token, isGraph]);
 
-  useEffect(() => firstHit.current?.scrollIntoView({ block: "center" }), [slice]);
+  useEffect(() => {
+    firstHit.current?.scrollIntoView({ block: "center" });
+  }, [slice]);
 
   return (
     <aside className="viewer" aria-label="Source viewer" data-testid="source-viewer">

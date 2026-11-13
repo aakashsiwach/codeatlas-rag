@@ -108,6 +108,7 @@ def test_petclinic_eval_splits_are_well_formed():
     assert {i.category for i in dev} == {i.category for i in test}  # stratified: every category in both
     for item in items:
         assert bool(item.expected_sources) == item.answerable, item.id
+        assert item.reference_answer, item.id  # every question has a (possibly unreviewed) reference answer
 
 
 def test_evaluate_on_fixture(atlas):

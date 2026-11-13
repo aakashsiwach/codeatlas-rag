@@ -23,12 +23,24 @@ questions:
     expected_sources:
       - vet/VetRepository.java
       - system/CacheConfiguration.java
+    reference_answer: >-
+      Yes. Both VetRepository.findAll methods are annotated @Cacheable("vets")
+      (vet/VetRepository.java:44-46, 54-56). The cache is configured in CacheConfiguration, which enables
+      caching with @EnableCaching and registers a JCacheManagerCustomizer that creates the "vets" cache
+      with statistics enabled (system/CacheConfiguration.java:31-38, 49-51).
+    reviewed: false
 
   - id: default-database
     question: Which database does the application use by default, and how is the schema loaded?
     category: config
     expected_sources:
       - resources/application.properties
+    reference_answer: >-
+      H2. application.properties sets database=h2 and loads the schema and data from
+      classpath*:db/${database}/schema.sql and data.sql through spring.sql.init.schema-locations and
+      data-locations (resources/application.properties:2-4). Hibernate does not generate the schema
+      (spring.jpa.hibernate.ddl-auto=none, resources/application.properties:10).
+    reviewed: false
 
   - id: language-switch
     question: How does a user switch the application's language?
@@ -36,6 +48,13 @@ questions:
     expected_sources:
       - system/WebConfiguration.java::WebConfiguration.localeChangeInterceptor
       - system/WebConfiguration.java::WebConfiguration.localeResolver
+    reference_answer: >-
+      With the lang request parameter. WebConfiguration registers a LocaleChangeInterceptor whose
+      parameter name is "lang" (system/WebConfiguration.java:44-49, 55-58) and keeps the chosen locale in
+      the session with a SessionLocaleResolver that defaults to English
+      (system/WebConfiguration.java:32-37). Texts come from messages/messages*.properties
+      (resources/application.properties:16).
+    reviewed: false
 
   # --- endpoint (5) ----------------------------------------------------------
 
@@ -44,18 +63,34 @@ questions:
     category: endpoint
     expected_sources:
       - owner/OwnerController.java::OwnerController.processUpdateOwnerForm
+    reference_answer: >-
+      POST /owners/{ownerId}/edit, handled by OwnerController.processUpdateOwnerForm
+      (owner/OwnerController.java:153-171). It re-shows the form on validation errors, redirects back to
+      /owners/{ownerId}/edit if the owner id in the form differs from the URL, and otherwise sets the id,
+      saves the owner and redirects to /owners/{ownerId}. The GET form is initUpdateOwnerForm
+      (owner/OwnerController.java:148-151).
+    reviewed: false
 
   - id: welcome
     question: Which controller serves the home page?
     category: endpoint
     expected_sources:
       - system/WelcomeController.java
+    reference_answer: >-
+      WelcomeController.welcome maps GET / and returns the "welcome" view
+      (system/WelcomeController.java:22-28).
+    reviewed: false
 
   - id: new-pet-endpoint
     question: Which method handles POST /owners/{ownerId}/pets/new?
     category: endpoint
     expected_sources:
       - owner/PetController.java::PetController.processCreationForm
+    reference_answer: >-
+      PetController.processCreationForm (owner/PetController.java:107-137). The class-level
+      @RequestMapping("/owners/{ownerId}") (owner/PetController.java:48) plus @PostMapping("/pets/new")
+      give the full path.
+    reviewed: false
 
   - id: edit-pet-endpoint
     question: Which methods handle /owners/{ownerId}/pets/{petId}/edit?
@@ -63,6 +98,11 @@ questions:
     expected_sources:
       - owner/PetController.java::PetController.initUpdateForm
       - owner/PetController.java::PetController.processUpdateForm
+    reference_answer: >-
+      PetController.initUpdateForm handles GET and shows the form (owner/PetController.java:139-142);
+      PetController.processUpdateForm handles POST (owner/PetController.java:144-179). Both are under the
+      class mapping /owners/{ownerId} (owner/PetController.java:48).
+    reviewed: false
 
   - id: new-visit-endpoint
     question: Which methods handle /owners/{ownerId}/pets/{petId}/visits/new?
@@ -70,6 +110,12 @@ questions:
     expected_sources:
       - owner/VisitController.java::VisitController.initNewVisitForm
       - owner/VisitController.java::VisitController.processNewVisitForm
+    reference_answer: >-
+      VisitController.initNewVisitForm handles GET (owner/VisitController.java:90-93) and
+      VisitController.processNewVisitForm handles POST (owner/VisitController.java:97-112). Before either
+      runs, the @ModelAttribute method loadPetWithVisit loads the owner and pet and creates the Visit
+      (owner/VisitController.java:63-81).
+    reviewed: false
 
   # --- endpoint-callers (2) --------------------------------------------------
 
@@ -83,12 +129,25 @@ questions:
       - owner/PetController.java::PetController.processCreationForm
       - owner/PetController.java::PetController.processUpdateForm
       - owner/VisitController.java::VisitController.processNewVisitForm
+    reference_answer: >-
+      OwnerController.processCreationForm after creating an owner (owner/OwnerController.java:86);
+      OwnerController.processFindForm when a search matches exactly one owner
+      (owner/OwnerController.java:125); OwnerController.processUpdateOwnerForm after saving
+      (owner/OwnerController.java:170); PetController.processCreationForm and processUpdateForm after
+      saving a pet (owner/PetController.java:136, 178); and VisitController.processNewVisitForm after
+      booking a visit (owner/VisitController.java:111).
+    reviewed: false
 
   - id: redirects-to-owner-list
     question: Which code redirects to /owners, and in what situation?
     category: endpoint-callers
     expected_sources:
       - owner/OwnerController.java::OwnerController.processFindForm
+    reference_answer: >-
+      OwnerController.processFindForm redirects to /owners when the requested page is below 1 or beyond
+      the last page of results; it resets page to 1 and keeps a non-empty lastName parameter
+      (owner/OwnerController.java:108-114).
+    reviewed: false
 
   # --- flow (8) --------------------------------------------------------------
 
@@ -99,6 +158,15 @@ questions:
       - owner/OwnerController.java::OwnerController.processFindForm
       - owner/OwnerController.java::OwnerController.findPaginatedForOwnersLastName
       - owner/OwnerRepository.java
+    reference_answer: >-
+      GET /owners is handled by OwnerController.processFindForm (owner/OwnerController.java:94-130). A
+      missing last name becomes "" (all owners); otherwise it is stripped. findPaginatedForOwnersLastName
+      builds a PageRequest of 5 owners per page and calls OwnerRepository.findByLastNameStartingWith
+      (owner/OwnerController.java:141-146; owner/OwnerRepository.java:45). An out-of-range page redirects
+      to /owners, no results rejects lastName with "notFound", exactly one result redirects to that owner,
+      and several results render owners/ownersList with pagination attributes
+      (owner/OwnerController.java:108-129, 132-139).
+    reviewed: false
 
   - id: owner-not-found
     question: What error is raised when an owner id does not exist?
@@ -106,6 +174,11 @@ questions:
     expected_sources:
       - owner/OwnerController.java::OwnerController.findOwner
       - owner/OwnerController.java::OwnerController.showOwner
+    reference_answer: >-
+      An IllegalArgumentException with the message "Owner not found with id: <id>. Please ensure the ID is
+      correct ...", thrown by OwnerController.findOwner (owner/OwnerController.java:64-70) and
+      OwnerController.showOwner (owner/OwnerController.java:178-186) when findById returns nothing.
+    reviewed: false
 
   - id: add-pet
     question: How is a new pet added to an owner?
@@ -113,6 +186,14 @@ questions:
     expected_sources:
       - owner/PetController.java::PetController.processCreationForm
       - owner/Owner.java::Owner.addPet
+    reference_answer: >-
+      POST /owners/{ownerId}/pets/new is handled by PetController.processCreationForm
+      (owner/PetController.java:107-137): it rejects a duplicate name or a future birth date and re-shows
+      the form on errors; otherwise it calls Owner.addPet, saves the owner with saveAndFlush and redirects
+      to /owners/{ownerId}. Owner.addPet ignores a null pet and a pet already in the list (same instance
+      or same id) before adding it (owner/Owner.java:100-113). The GET form, initCreationForm, also
+      attaches a new Pet to the owner (owner/PetController.java:100-105).
+    reviewed: false
 
   - id: duplicate-pet-name
     question: How does the application prevent an owner from having two pets with the same name?
@@ -121,6 +202,14 @@ questions:
       - owner/PetController.java::PetController.processCreationForm
       - owner/PetController.java::PetController.isDuplicatePetNameViolation
       - db/h2/schema.sql
+    reference_answer: >-
+      Twice. processCreationForm looks the name up with Owner.getPet(name, true), a case-insensitive match
+      among saved pets, and rejects it as "duplicate" (owner/PetController.java:111-113;
+      owner/Owner.java:147-157). The database enforces it as well: the pets table has the constraint
+      unique_owner_pet_name UNIQUE (owner_id, name) (db/h2/schema.sql:55). If saving still fails with a
+      DataIntegrityViolationException, isDuplicatePetNameViolation recognises that constraint name and the
+      form shows the duplicate error (owner/PetController.java:128-134, 202-205).
+    reviewed: false
 
   - id: edit-pet
     question: How are an existing pet's details updated?
@@ -128,6 +217,14 @@ questions:
     expected_sources:
       - owner/PetController.java::PetController.processUpdateForm
       - owner/PetController.java::PetController.updatePetDetails
+    reference_answer: >-
+      POST /owners/{ownerId}/pets/{petId}/edit is handled by PetController.processUpdateForm
+      (owner/PetController.java:144-179). It rejects a name used by another of the owner's pets and a
+      future birth date, then calls updatePetDetails, which copies the name, birth date and type onto the
+      existing pet (or adds the pet if it is not found) and saves the owner with saveAndFlush
+      (owner/PetController.java:186-200). A unique-constraint violation becomes the duplicate-name error;
+      success redirects to /owners/{ownerId}.
+    reviewed: false
 
   - id: visit-booking
     question: How do I book a new visit for a pet?
@@ -135,6 +232,14 @@ questions:
     expected_sources:
       - owner/VisitController.java::VisitController.processNewVisitForm
       - owner/VisitController.java::VisitController.loadPetWithVisit
+    reference_answer: >-
+      Open /owners/{ownerId}/pets/{petId}/visits/new. VisitController.loadPetWithVisit runs first: it
+      loads the owner (or throws), finds the pet (or throws "Pet with id ... not found"), creates a Visit
+      and adds it to the pet (owner/VisitController.java:63-81). Submitting the form calls
+      processNewVisitForm, which validates the visit, calls Owner.addVisit(petId, visit), saves the owner
+      and redirects to /owners/{ownerId} with "Your visit has been booked"
+      (owner/VisitController.java:97-112).
+    reviewed: false
 
   - id: visit-date-rule
     question: What date rule applies when booking a visit?
@@ -142,6 +247,12 @@ questions:
     expected_sources:
       - owner/VisitController.java::VisitController.processNewVisitForm
       - owner/VisitController.java::VisitController.minVisitDate
+    reference_answer: >-
+      The date must be in the future: processNewVisitForm rejects a date that is not after today with
+      typeMismatch.visitDate, "Visit date must be in the future" (owner/VisitController.java:100-102;
+      messages/messages.properties:9). The form's minimum date is tomorrow (minVisitDate,
+      owner/VisitController.java:83-86), and a new Visit defaults to tomorrow (owner/Visit.java:50-52).
+    reviewed: false
 
   - id: vets-pagination
     question: How is the vet list paginated?
@@ -149,6 +260,13 @@ questions:
     expected_sources:
       - vet/VetController.java::VetController.showVetList
       - vet/VetController.java::VetController.findPaginated
+    reference_answer: >-
+      GET /vets.html is handled by VetController.showVetList (vet/VetController.java:45-54). findPaginated
+      asks VetRepository.findAll(Pageable) for 5 vets per page (vet/VetController.java:65-70); an
+      out-of-range page redirects to /vets.html with page=1 (vet/VetController.java:49-52);
+      addPaginationModel puts currentPage, totalPages, totalItems and listVets into the model for
+      vets/vetList (vet/VetController.java:56-63).
+    reviewed: false
 
   # --- impact (8) ------------------------------------------------------------
 
@@ -158,6 +276,12 @@ questions:
     expected_sources:
       - owner/PetController.java
       - owner/VisitController.java
+    reference_answer: >-
+      PetController calls it in findPet, processCreationForm, processUpdateForm and updatePetDetails
+      (owner/PetController.java:86, 111, 152, 189); VisitController.loadPetWithVisit calls it
+      (owner/VisitController.java:70); and inside Owner, getPet(String) and addVisit use the other
+      overloads (owner/Owner.java:121, 181).
+    reviewed: false
 
   - id: pettype-impact
     question: What depends on the PetType class?
@@ -167,6 +291,13 @@ questions:
       - owner/PetTypeFormatter.java
       - owner/PetTypeRepository.java
       - owner/PetController.java::PetController.populatePetTypes
+    reference_answer: >-
+      Pet has a PetType type field with a getter and setter (owner/Pet.java:52-54, 69-75);
+      PetTypeRepository is a JpaRepository<PetType, Integer> with findPetTypes
+      (owner/PetTypeRepository.java:30-37); PetTypeFormatter converts between a PetType and its name
+      (owner/PetTypeFormatter.java:37-60); and PetController.populatePetTypes exposes the types to the pet
+      form (owner/PetController.java:62-65).
+    reviewed: false
 
   - id: visit-impact
     question: What would be affected by changing the Visit entity?
@@ -175,6 +306,12 @@ questions:
       - owner/Pet.java::Pet.addVisit
       - owner/Owner.java::Owner.addVisit
       - owner/VisitController.java
+    reference_answer: >-
+      Pet holds the visits collection and Pet.addVisit (owner/Pet.java:56-59, 81-83); Owner.addVisit adds
+      a visit to one of its pets (owner/Owner.java:176-186); and VisitController creates, validates and
+      saves visits (owner/VisitController.java:63-112). The visits table and the visit form would also
+      have to match.
+    reviewed: false
 
   - id: baseentity-impact
     question: Which classes depend on BaseEntity?
@@ -184,12 +321,24 @@ questions:
       - model/Person.java
       - owner/Visit.java
       - PetClinicRuntimeHints.java
+    reference_answer: >-
+      NamedEntity and Person extend it (model/NamedEntity.java:31; model/Person.java:29), and through them
+      Pet, PetType, Specialty, Owner and Vet; Visit extends it directly (owner/Visit.java:37);
+      PetClinicRuntimeHints registers it for Java serialization in native images
+      (PetClinicRuntimeHints.java:33). Its id and isNew() are used throughout, for example in Owner.addPet
+      and Owner.getPet (owner/Owner.java:108, 131).
+    reviewed: false
 
   - id: specialty-impact
     question: What depends on the Specialty entity?
     category: impact
     expected_sources:
       - vet/Vet.java
+    reference_answer: >-
+      Vet, through its many-to-many specialties set joined via vet_specialties, getSpecialties (sorted by
+      name), getNrOfSpecialties and addSpecialty (vet/Vet.java:47-72). Specialty itself is an empty
+      NamedEntity mapped to the specialties table (vet/Specialty.java:28-30).
+    reviewed: false
 
   - id: pet-addvisit-callers
     question: Which methods call Pet.addVisit?
@@ -197,18 +346,30 @@ questions:
     expected_sources:
       - owner/Owner.java::Owner.addVisit
       - owner/VisitController.java::VisitController.loadPetWithVisit
+    reference_answer: >-
+      Owner.addVisit, after looking the pet up by id (owner/Owner.java:176-186), and
+      VisitController.loadPetWithVisit, which adds the new Visit to the pet before the visit form is shown
+      or processed (owner/VisitController.java:78-80).
+    reviewed: false
 
   - id: lastname-query-callers
     question: Who calls OwnerRepository.findByLastNameStartingWith?
     category: impact
     expected_sources:
       - owner/OwnerController.java::OwnerController.findPaginatedForOwnersLastName
+    reference_answer: >-
+      Only OwnerController.findPaginatedForOwnersLastName (owner/OwnerController.java:141-146), which
+      processFindForm calls (owner/OwnerController.java:107).
+    reviewed: false
 
   - id: updatepetdetails-callers
     question: Who calls PetController.updatePetDetails?
     category: impact
     expected_sources:
       - owner/PetController.java::PetController.processUpdateForm
+    reference_answer: >-
+      Only PetController.processUpdateForm (owner/PetController.java:167-168).
+    reviewed: false
 
   # --- locate (5) ------------------------------------------------------------
 
@@ -217,12 +378,20 @@ questions:
     category: locate
     expected_sources:
       - owner/OwnerController.java::OwnerController.findPaginatedForOwnersLastName
+    reference_answer: >-
+      Five: findPaginatedForOwnersLastName uses pageSize = 5 (owner/OwnerController.java:142).
+    reviewed: false
 
   - id: pet-validator-registration
     question: How is PetValidator wired into the pet form?
     category: locate
     expected_sources:
       - owner/PetController.java::PetController.initPetBinder
+    reference_answer: >-
+      PetController.initPetBinder is an @InitBinder("pet") method that calls dataBinder.setValidator(new
+      PetValidator()) (owner/PetController.java:94-98), so the @Valid Pet arguments of processCreationForm
+      and processUpdateForm are checked by PetValidator.validate (owner/PetValidator.java:38-59).
+    reviewed: false
 
   - id: pet-type-conversion
     question: How is a pet type string from the form converted into a PetType object?
@@ -230,6 +399,13 @@ questions:
     expected_sources:
       - owner/PetTypeFormatter.java::PetTypeFormatter.parse
       - owner/PetTypeRepository.java
+    reference_answer: >-
+      PetTypeFormatter, a @Component Formatter<PetType>. Its parse method loads all types with
+      PetTypeRepository.findPetTypes and returns the one whose name equals the submitted text, or throws
+      ParseException("type not found: ...") (owner/PetTypeFormatter.java:51-60;
+      owner/PetTypeRepository.java:36-37). print renders a type as its name
+      (owner/PetTypeFormatter.java:45-49).
+    reviewed: false
 
   - id: id-binding-protection
     question: How does the application stop users from setting entity ids through form fields?
@@ -239,12 +415,24 @@ questions:
       - owner/PetController.java::PetController.initOwnerBinder
       - owner/PetController.java::PetController.initPetBinder
       - owner/VisitController.java::VisitController.setAllowedFields
+    reference_answer: >-
+      Each controller registers an @InitBinder that disallows the fields id and *.id:
+      OwnerController.setAllowedFields (owner/OwnerController.java:59-62), PetController.initOwnerBinder
+      and initPetBinder (owner/PetController.java:89-98), and VisitController.setAllowedFields
+      (owner/VisitController.java:51-54). OwnerController.processUpdateOwnerForm also rejects a form whose
+      owner id differs from the URL (owner/OwnerController.java:161-165).
+    reviewed: false
 
   - id: error-demo
     question: How does the application demonstrate error handling?
     category: locate
     expected_sources:
       - system/CrashController.java::CrashController.triggerException
+    reference_answer: >-
+      CrashController maps GET /oups to triggerException, which always throws a RuntimeException
+      ("Expected: controller used to showcase what happens when an exception is thrown") so that the error
+      page can be seen (system/CrashController.java:31-35).
+    reviewed: false
 
   # --- model (2) -------------------------------------------------------------
 
@@ -255,6 +443,13 @@ questions:
       - model/BaseEntity.java
       - model/NamedEntity.java
       - model/Person.java
+    reference_answer: >-
+      BaseEntity is the @MappedSuperclass with the generated Integer id and isNew()
+      (model/BaseEntity.java:32-49). NamedEntity extends it with a required name
+      (model/NamedEntity.java:30-43), and Person extends it with firstName and lastName
+      (model/Person.java:28-55). Owner and Vet extend Person; Pet, PetType and Specialty extend
+      NamedEntity; Visit extends BaseEntity.
+    reviewed: false
 
   - id: pet-ordering
     question: In what order are an owner's pets and a pet's visits returned?
@@ -262,6 +457,11 @@ questions:
     expected_sources:
       - owner/Owner.java
       - owner/Pet.java
+    reference_answer: >-
+      An owner's pets are ordered by name (@OrderBy("name") on Owner.pets, owner/Owner.java:67-70) and a
+      pet's visits by date, ascending (@OrderBy("date ASC") on Pet.visits, owner/Pet.java:56-59). Both
+      collections are loaded eagerly.
+    reviewed: false
 
   # --- unanswerable (7) ------------------------------------------------------
 
@@ -269,33 +469,59 @@ questions:
     question: How are Kafka consumer offsets committed?
     category: unanswerable
     answerable: false
+    reference_answer: >-
+      Should refuse: PetClinic has no Kafka dependency or consumers, so there are no consumer offsets.
+    reviewed: false
 
   - id: no-graphql
     question: Where is the GraphQL schema for pets defined?
     category: unanswerable
     answerable: false
+    reference_answer: >-
+      Should refuse: there is no GraphQL schema; pets are handled by Spring MVC controllers with Thymeleaf
+      views (for example owner/PetController.java).
+    reviewed: false
 
   - id: no-oauth
     question: How does the OAuth2 login flow refresh tokens?
     category: unanswerable
     answerable: false
+    reference_answer: >-
+      Should refuse: the application has no OAuth2 login and does not use Spring Security.
+    reviewed: false
 
   - id: no-security-roles
     question: Which Spring Security roles can edit owners?
     category: unanswerable
     answerable: false
+    reference_answer: >-
+      Should refuse: Spring Security is not used, so there are no roles; owners are edited through
+      OwnerController without any access check.
+    reviewed: false
 
   - id: no-redis
     question: How is the Redis session store configured?
     category: unanswerable
     answerable: false
+    reference_answer: >-
+      Should refuse: there is no Redis or session-store configuration; the only cache is the JCache "vets"
+      cache (system/CacheConfiguration.java).
+    reviewed: false
 
   - id: no-delete-owner
     question: Which endpoint deletes an owner?
     category: unanswerable
     answerable: false
+    reference_answer: >-
+      Should refuse: no endpoint deletes an owner; OwnerController only creates, finds, shows and edits
+      owners (owner/OwnerController.java:72-186).
+    reviewed: false
 
   - id: no-payments
     question: How are vet visit payments processed?
     category: unanswerable
     answerable: false
+    reference_answer: >-
+      Should refuse: there is no payment processing; a visit stores only a date and a description
+      (owner/Visit.java:39-45).
+    reviewed: false

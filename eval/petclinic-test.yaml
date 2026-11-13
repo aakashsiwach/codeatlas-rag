@@ -22,12 +22,23 @@ questions:
     category: config
     expected_sources:
       - resources/application-mysql.properties
+    reference_answer: >-
+      Run with the mysql profile, which loads application-mysql.properties: database=mysql (so the
+      db/mysql schema and data scripts are used), the datasource URL, user and password from MYSQL_URL,
+      MYSQL_USER and MYSQL_PASS with local defaults, and spring.sql.init.mode=always
+      (resources/application-mysql.properties:2-7).
+    reviewed: false
 
   - id: native-image-hints
     question: How is the application prepared for GraalVM native images?
     category: config
     expected_sources:
       - PetClinicRuntimeHints.java::PetClinicRuntimeHints.registerHints
+    reference_answer: >-
+      PetClinicRuntimeHints.registerHints registers the resource patterns db/*, db/*/*, messages/* and
+      mysql-default-conf, and registers BaseEntity, Person and Vet for Java serialization
+      (PetClinicRuntimeHints.java:27-36).
+    reviewed: false
 
   # --- endpoint (3) ----------------------------------------------------------
 
@@ -36,6 +47,11 @@ questions:
     category: endpoint
     expected_sources:
       - owner/OwnerController.java::OwnerController.showOwner
+    reference_answer: >-
+      OwnerController.showOwner, mapped to GET /owners/{ownerId}: it loads the owner by id (or throws
+      IllegalArgumentException) and returns the owners/ownerDetails view with that owner
+      (owner/OwnerController.java:178-186).
+    reviewed: false
 
   - id: vets-json
     question: Which endpoint returns the list of vets as JSON or XML?
@@ -43,12 +59,21 @@ questions:
     expected_sources:
       - vet/VetController.java::VetController.showResourcesVetList
       - vet/Vets.java
+    reference_answer: >-
+      GET /vets, handled by VetController.showResourcesVetList, a @ResponseBody method that wraps all vets
+      in a Vets object (vet/VetController.java:72-79). Vets is an @XmlRootElement with an @XmlElement
+      vetList, so it can be rendered as JSON or XML (vet/Vets.java:30-41).
+    reviewed: false
 
   - id: oups-endpoint
     question: What does the /oups endpoint do?
     category: endpoint
     expected_sources:
       - system/CrashController.java::CrashController.triggerException
+    reference_answer: >-
+      It always fails: CrashController.triggerException throws a RuntimeException to demonstrate the error
+      page (system/CrashController.java:31-35).
+    reviewed: false
 
   # --- endpoint-callers (2) --------------------------------------------------
 
@@ -57,12 +82,21 @@ questions:
     category: endpoint-callers
     expected_sources:
       - owner/OwnerController.java::OwnerController.processUpdateOwnerForm
+    reference_answer: >-
+      OwnerController.processUpdateOwnerForm, when the owner id in the submitted form differs from
+      {ownerId} in the URL: it rejects the id as "mismatch", adds an error flash message and redirects to
+      /owners/{ownerId}/edit (owner/OwnerController.java:161-165).
+    reviewed: false
 
   - id: redirects-to-vets-page
     question: Who redirects to /vets.html and why?
     category: endpoint-callers
     expected_sources:
       - vet/VetController.java::VetController.showVetList
+    reference_answer: >-
+      VetController.showVetList redirects to /vets.html with page=1 when the requested page is below 1 or
+      beyond the last page (vet/VetController.java:48-52).
+    reviewed: false
 
   # --- flow (4) --------------------------------------------------------------
 
@@ -71,18 +105,33 @@ questions:
     category: flow
     expected_sources:
       - owner/OwnerController.java::OwnerController.processCreationForm
+    reference_answer: >-
+      OwnerController.processCreationForm checks the BindingResult of the @Valid Owner; on errors it adds
+      the flash attribute "There was an error in creating the owner." and returns the create/update form
+      instead of saving (owner/OwnerController.java:77-82). The rules come from the constraints on Owner
+      and Person, such as required fields and the 10-digit telephone pattern (owner/Owner.java:52-65;
+      model/Person.java:31-39).
+    reviewed: false
 
   - id: owner-search-single-result
     question: What happens when an owner search matches exactly one owner?
     category: flow
     expected_sources:
       - owner/OwnerController.java::OwnerController.processFindForm
+    reference_answer: >-
+      processFindForm redirects straight to that owner's page, /owners/{id}
+      (owner/OwnerController.java:122-126).
+    reviewed: false
 
   - id: owner-search-out-of-range-page
     question: What does the owner search do when the requested page number is out of range?
     category: flow
     expected_sources:
       - owner/OwnerController.java::OwnerController.processFindForm
+    reference_answer: >-
+      It redirects to /owners with page=1, keeping the lastName parameter if one was given
+      (owner/OwnerController.java:108-114).
+    reviewed: false
 
   - id: pet-birth-date-future
     question: Can a pet be saved with a birth date in the future?
@@ -90,6 +139,11 @@ questions:
     expected_sources:
       - owner/PetController.java::PetController.processCreationForm
       - owner/PetController.java::PetController.processUpdateForm
+    reference_answer: >-
+      No. processCreationForm and processUpdateForm both reject a birth date after today with
+      typeMismatch.birthDate and show the form again (owner/PetController.java:115-118, 158-161).
+      PetValidator also requires a birth date (owner/PetValidator.java:55-58).
+    reviewed: false
 
   # --- impact (5) ------------------------------------------------------------
 
@@ -101,18 +155,34 @@ questions:
       - owner/PetController.java
       - owner/VisitController.java
       - owner/OwnerRepository.java
+    reference_answer: >-
+      OwnerRepository is typed on Owner (owner/OwnerRepository.java:36-60); OwnerController binds,
+      validates, saves and shows owners (owner/OwnerController.java); PetController uses Owner.getPet and
+      Owner.addPet and saves owners (owner/PetController.java); VisitController loads owners and calls
+      Owner.addVisit (owner/VisitController.java). The owners table and Owner's pets mapping would also be
+      affected.
+    reviewed: false
 
   - id: vetrepository-impact
     question: What breaks if I change VetRepository?
     category: impact
     expected_sources:
       - vet/VetController.java
+    reference_answer: >-
+      VetController, its only user: findPaginated uses findAll(Pageable) for /vets.html and
+      showResourcesVetList uses findAll() for /vets (vet/VetController.java:39-43, 65-79). Its
+      @Cacheable("vets") methods also tie it to the vets cache (vet/VetRepository.java:44-56).
+    reviewed: false
 
   - id: petvalidator-impact
     question: Who uses PetValidator?
     category: impact
     expected_sources:
       - owner/PetController.java::PetController.initPetBinder
+    reference_answer: >-
+      Only PetController.initPetBinder, which sets it as the validator of the "pet" form object
+      (owner/PetController.java:94-98).
+    reviewed: false
 
   - id: addpet-callers
     question: Who calls Owner.addPet?
@@ -121,12 +191,20 @@ questions:
       - owner/PetController.java::PetController.initCreationForm
       - owner/PetController.java::PetController.processCreationForm
       - owner/PetController.java::PetController.updatePetDetails
+    reference_answer: >-
+      PetController.initCreationForm (owner/PetController.java:103), PetController.processCreationForm
+      (owner/PetController.java:125) and PetController.updatePetDetails when the pet is not found
+      (owner/PetController.java:197).
+    reviewed: false
 
   - id: addvisit-callers
     question: Who calls Owner.addVisit?
     category: impact
     expected_sources:
       - owner/VisitController.java::VisitController.processNewVisitForm
+    reference_answer: >-
+      Only VisitController.processNewVisitForm (owner/VisitController.java:108).
+    reviewed: false
 
   # --- locate (3) ------------------------------------------------------------
 
@@ -135,6 +213,12 @@ questions:
     category: locate
     expected_sources:
       - owner/PetValidator.java::PetValidator.validate
+    reference_answer: >-
+      PetValidator.validate (owner/PetValidator.java:38-59): the name is required and at most 30
+      characters, a new pet needs a type, and the birth date is required. PetController.initPetBinder
+      registers it for the pet form (owner/PetController.java:94-98), and the controller also rejects
+      duplicate names and future birth dates (owner/PetController.java:111-118, 151-161).
+    reviewed: false
 
   - id: pet-type-dropdown
     question: Where do the pet type options in the pet form come from?
@@ -142,6 +226,11 @@ questions:
     expected_sources:
       - owner/PetController.java::PetController.populatePetTypes
       - owner/PetTypeRepository.java
+    reference_answer: >-
+      PetController.populatePetTypes, a @ModelAttribute("types") method that returns
+      PetTypeRepository.findPetTypes(), all pet types ordered by name (owner/PetController.java:62-65;
+      owner/PetTypeRepository.java:36-37).
+    reviewed: false
 
   - id: telephone-validation
     question: What format must an owner's telephone number have?
@@ -149,6 +238,11 @@ questions:
     expected_sources:
       - owner/Owner.java
       - messages/messages.properties
+    reference_answer: >-
+      Exactly 10 digits: Owner.telephone has @NotBlank and @Pattern(regexp = "\\d{10}")
+      (owner/Owner.java:62-65), and its message telephone.invalid reads "Telephone must be a 10-digit
+      number" (messages/messages.properties:34).
+    reviewed: false
 
   # --- model (1) -------------------------------------------------------------
 
@@ -158,6 +252,11 @@ questions:
     expected_sources:
       - vet/Vet.java
       - vet/Specialty.java
+    reference_answer: >-
+      Specialty is a NamedEntity mapped to the specialties table (vet/Specialty.java:28-30). Vet has an
+      eagerly loaded @ManyToMany set of specialties joined through vet_specialties, exposed sorted by name
+      through getSpecialties, plus getNrOfSpecialties and addSpecialty (vet/Vet.java:47-72).
+    reviewed: false
 
   # --- unanswerable (4) ------------------------------------------------------
 
@@ -165,18 +264,32 @@ questions:
     question: How are appointment reminder emails sent to owners?
     category: unanswerable
     answerable: false
+    reference_answer: >-
+      Should refuse: there is no email or reminder feature (no mail dependency and no sender).
+    reviewed: false
 
   - id: no-rate-limit
     question: How is rate limiting applied to the vets API?
     category: unanswerable
     answerable: false
+    reference_answer: >-
+      Should refuse: no rate limiting is applied; /vets is a plain controller method
+      (vet/VetController.java:72-79).
+    reviewed: false
 
   - id: no-scheduled
     question: Which scheduled job cleans up old visits?
     category: unanswerable
     answerable: false
+    reference_answer: >-
+      Should refuse: there are no scheduled jobs, and visits are never cleaned up automatically.
+    reviewed: false
 
   - id: no-flyway
     question: Where are the Flyway migration scripts?
     category: unanswerable
     answerable: false
+    reference_answer: >-
+      Should refuse: Flyway is not used; the schema is a plain SQL script loaded by spring.sql.init from
+      db/${database}/schema.sql (resources/application.properties:2-4).
+    reviewed: false

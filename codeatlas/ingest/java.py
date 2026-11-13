@@ -68,6 +68,7 @@ class MethodInfo:
     start_line: int
     end_line: int
     is_constructor: bool = False
+    decl_line: int = 0  # first line of the declaration itself (annotations, signature), after any Javadoc
     annotations: list[str] = field(default_factory=list)
     calls: list[list[str | None]] = field(default_factory=list)  # [receiver type | None | "?", name]
     type_refs: list[str] = field(default_factory=list)
@@ -84,6 +85,7 @@ class TypeInfo:
     start_line: int
     end_line: int
     stereotype: str | None = None
+    decl_line: int = 0  # first line of the declaration itself, after any Javadoc
     annotations: list[str] = field(default_factory=list)
     extends: list[str] = field(default_factory=list)
     implements: list[str] = field(default_factory=list)
@@ -360,6 +362,7 @@ def _parse_type(ctx: _Ctx, node: Node, outer: TypeInfo | None) -> None:
         kind=TYPE_KINDS[node.type],
         start_line=_line(doc or node),
         end_line=_end_line(node),
+        decl_line=_line(node),
         stereotype=stereotype,
         annotations=ann_names,
         extends=extends,
@@ -453,6 +456,7 @@ def _parse_method(node: Node, owner: TypeInfo, base_paths: list[str]) -> MethodI
         signature=_signature(node),
         start_line=_line(doc or node),
         end_line=_end_line(node),
+        decl_line=_line(node),
         is_constructor=is_ctor,
         annotations=[a["name"] for a in annotations],
         calls=_calls(body, var_types) if body is not None else [],

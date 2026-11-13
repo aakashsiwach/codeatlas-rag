@@ -22,7 +22,7 @@ def span(path: str, start: int, end: int, kind: str = "method", symbol: str | No
     return Chunk(id=f"{path}:{start}", path=path, kind=kind, text=text, embed_text=text, start_line=start, end_line=end, symbol=symbol)
 
 
-PAYMENT = f"{JAVA_ROOT}/payment/PaymentService.java"  # class: lines 9-34, charge(): lines 20-28
+PAYMENT = f"{JAVA_ROOT}/payment/PaymentService.java"  # class: 9-34; charge(): Javadoc 20-23, declaration 24-28
 
 
 def resolved(*specs: str) -> list[ExpectedSource]:
@@ -36,19 +36,23 @@ def test_expected_source_matching_is_by_definition_lines():
         "payment/PaymentService.java::PaymentService",
         "payment/PaymentService.java",
     )
-    assert method.definitions == ((PAYMENT, 20, 28),) and method.is_method
+    assert method.definitions == ((PAYMENT, 24, 28),) and method.is_method  # Javadoc excluded
     assert cls.definitions == ((PAYMENT, 9, 34),) and not cls.is_method
 
-    # Same rule for every chunker: the chunk's line range must overlap the definition.
+    # Same rule for every chunker: overlap the definition by >= min(5 lines, 50%); for charge() that is 3 lines.
     assert method.matches(span(PAYMENT, 20, 28, symbol="com.example.shop.payment.PaymentService#charge"))
-    assert method.matches(span(PAYMENT, 1, 21, kind="naive"))  # partial overlap counts
-    assert method.matches(span(PAYMENT, 27, 40, kind="naive"))
+    assert method.matches(span(PAYMENT, 1, 26, kind="naive"))  # 3 lines of the declaration
+    assert not method.matches(span(PAYMENT, 1, 25, kind="naive"))  # only 2
+    assert not method.matches(span(PAYMENT, 1, 23, kind="naive"))  # only the Javadoc
+    assert method.matches(span(PAYMENT, 26, 40, kind="naive"))
+    assert not method.matches(span(PAYMENT, 27, 40, kind="naive"))  # body tail and closing brace only
     # A naive chunk that only mentions the name (e.g. a call site or a later method) does not count.
     assert not method.matches(span(PAYMENT, 29, 34, kind="naive", text="return charge(order);"))
     # A class outline spans the class but holds only signatures: it covers the class, not its methods.
     outline = span(PAYMENT, 9, 34, kind="class", symbol="com.example.shop.payment.PaymentService")
     assert not method.matches(outline)
-    assert cls.matches(outline) and cls.matches(span(PAYMENT, 30, 33))
+    assert cls.matches(outline) and cls.matches(span(PAYMENT, 24, 28))  # 5 lines of a 26-line class
+    assert not cls.matches(span(PAYMENT, 30, 33))  # 4 lines: below min(5, 13)
     # Path must match too, and file-level sources match any chunk of the file.
     assert not method.matches(span(f"{JAVA_ROOT}/order/Order.java", 20, 28))
     assert whole_file.matches(span(PAYMENT, 1, 5, kind="naive"))

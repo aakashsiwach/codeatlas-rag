@@ -17,6 +17,7 @@ YAML format:
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -24,8 +25,13 @@ import yaml
 
 from codeatlas.models import Chunk
 
-# A resolved definition: (repo-relative path, first line, last line), 1-based and inclusive.
+# A resolved definition: (repo-relative path, first line, last line), 1-based and inclusive. The first line is
+# the declaration itself (annotations, signature): Javadoc above it is not part of the definition.
 Definition = tuple[str, int, int]
+
+# A chunk must overlap a definition by at least min(MIN_OVERLAP_LINES, MIN_OVERLAP_FRACTION of its lines).
+MIN_OVERLAP_LINES = 5
+MIN_OVERLAP_FRACTION = 0.5
 
 
 @dataclass(frozen=True)
@@ -33,9 +39,11 @@ class ExpectedSource:
     """A file, class or method that a correct answer must use.
 
     Symbol matching is by location, never by name: a chunk matches a symbol only if it comes from the
-    same file and its line range overlaps the symbol's definition. Every chunker (AST, naive) is
-    scored by the same rule. Class-outline chunks hold only member signatures, so they cover their
-    class but none of its methods.
+    same file and its line range overlaps the symbol's definition (declaration through closing brace,
+    Javadoc excluded) by at least min(5 lines, half the definition). Every chunker (AST, naive) is
+    scored by the same rule, so a chunk that only grazes a method (its Javadoc, a closing brace) does
+    not count. Class-outline chunks hold only member signatures, so they cover their class but none
+    of its methods.
     """
 
     path: str  # path suffix, e.g. "owner/OwnerController.java"
@@ -57,10 +65,13 @@ class ExpectedSource:
             raise ValueError(f"{self.path}::{self.symbol} is unresolved; call resolve_expected_sources first")
         if self.is_method and chunk.kind == "class":
             return False
-        return any(
-            chunk.path == path and chunk.start_line <= end and start <= chunk.end_line
-            for path, start, end in self.definitions
-        )
+        return any(chunk.path == path and overlaps_enough(chunk, start, end) for path, start, end in self.definitions)
+
+
+def overlaps_enough(chunk: Chunk, start: int, end: int) -> bool:
+    overlap = min(end, chunk.end_line) - max(start, chunk.start_line) + 1
+    required = min(MIN_OVERLAP_LINES, math.ceil(MIN_OVERLAP_FRACTION * (end - start + 1)))
+    return overlap >= max(1, required)
 
 
 @dataclass
@@ -103,9 +114,9 @@ def _java_definitions(rel_path: str, source: str) -> tuple[_Defs, _Defs]:
     methods: _Defs = {}
     for t in facts.types:
         local = t.qualified_name[len(prefix) :] if t.qualified_name.startswith(prefix) else t.qualified_name
-        types.setdefault(local, []).append((rel_path, t.start_line, t.end_line))
+        types.setdefault(local, []).append((rel_path, t.decl_line or t.start_line, t.end_line))
         for m in t.methods:  # overloads share a name: any of them counts
-            methods.setdefault(f"{local}.{m.name}", []).append((rel_path, m.start_line, m.end_line))
+            methods.setdefault(f"{local}.{m.name}", []).append((rel_path, m.decl_line or m.start_line, m.end_line))
     return types, methods
 
 

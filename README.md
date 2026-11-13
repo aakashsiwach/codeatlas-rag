@@ -142,18 +142,21 @@ It is split, stratified by category, into `eval/petclinic-dev.yaml` (40 question
 after the setup is frozen, so its numbers are not fitted to it.
 
 **How a retrieved chunk is matched to an expected source.** A file-level source matches any chunk of that
-file. A `Class.method` source is first resolved to the method's definition lines by parsing the
-repository, and a chunk matches only if it comes from that file and its line range overlaps those lines.
-The same rule applies to every chunker, so naive and AST chunks are scored alike. A class-outline chunk
-holds only member signatures, so it counts for its class but not for the class's methods. A source that
-no longer exists in the repository fails the run instead of silently scoring zero.
+file. A `Class.method` source is first resolved to the method's definition by parsing the repository:
+from the declaration (annotations and signature) to the closing brace, without the Javadoc above it. A
+chunk matches only if it comes from that file and overlaps the definition by at least
+**min(5 lines, half the definition)**. The same rule applies to every chunker, so naive and AST chunks are
+scored alike, and a chunk that only grazes a method (its Javadoc, one line, the closing brace) does not
+count. A class-outline chunk holds only member signatures, so it counts for its class but not for the
+class's methods. A source that no longer exists in the repository fails the run instead of silently
+scoring zero.
 
-> Change from the first baseline run: symbol-level sources used to match by name, and naive chunks
-> (which have no symbol) matched whenever the method name appeared anywhere in the chunk text. That
-> credited chunks that only *call* a method and missed chunks holding part of a method without its
-> signature line. On the full 64-question set the change left the AST setups unchanged and raised the
-> naive baseline (recall@5 0.660 → 0.682, MRR 0.598 → 0.638). Results from before the change are not
-> comparable with later ones.
+> History of the rule. (1) The first baseline matched symbols by name, and naive chunks (which have no
+> symbol) whenever the method name appeared anywhere in the text, crediting chunks that only *call* a
+> method. (2) Matching then became any line overlap with the definition, which left the AST setups
+> unchanged but raised the naive baseline (recall@5 0.660 → 0.682 on all 64 questions), because a large
+> window touching a method's Javadoc or last line counted. (3) The current rule requires a real overlap
+> with the declaration and body. Results from different rules are not comparable.
 
 The comparison is an ablation: each step changes one thing, so each row shows the gain from one technique.
 

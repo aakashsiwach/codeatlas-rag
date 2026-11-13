@@ -29,7 +29,7 @@ full path (`…\Python312\python.exe -m venv .venv`).
 **`.venv\Scripts\Activate.ps1` cannot be loaded.** PowerShell's execution policy blocks scripts. Allow
 them for the current shell only: `Set-ExecutionPolicy -Scope Process Bypass`.
 
-**Paths with spaces.** Quote them (`codeatlas index "C:\My Work\repo"`). In Git Bash, use forward slashes
+**Paths with spaces.** Quote them (`codeatlas index "C:\Projects\my repo"`). In Git Bash, use forward slashes
 (`/c/Projects/my repo`).
 
 **Line endings.** `.gitattributes` keeps `*.sh` files LF, so `scripts/run-judge.sh` runs in Git Bash even

@@ -21,3 +21,6 @@ repos/
 .idea/
 .vscode/
 .DS_Store
+
+# Local review notes (reference-answer review lists)
+eval/review/

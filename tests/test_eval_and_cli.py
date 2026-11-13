@@ -388,3 +388,16 @@ def test_cli_eval_runs_a_named_setup(tmp_path, repo, monkeypatch):
     assert unknown.exit_code == 2 and "Unknown setup" in unknown.output
     both = runner.invoke(app, [*base, "--setup", "quality", "--configs", "bm25"])
     assert both.exit_code == 2
+
+
+def test_run_metadata_pins_the_question_set_and_library_versions(atlas, tmp_path):
+    from codeatlas.eval.runner import content_sha256
+
+    items = load_eval_set(FIXTURE_EVAL)
+    meta = run_metadata(atlas, FIXTURE_EVAL, items)
+    assert meta["eval_set_sha256"] == content_sha256(FIXTURE_EVAL) and len(meta["eval_set_sha256"]) == 64
+    assert meta["versions"]["python"] and "torch" in meta["versions"] and "tree-sitter" in meta["versions"]
+    lf, crlf = tmp_path / "lf.yaml", tmp_path / "crlf.yaml"
+    lf.write_bytes(b"questions:\n  - id: a\n")
+    crlf.write_bytes(b"questions:\r\n  - id: a\r\n")
+    assert content_sha256(lf) == content_sha256(crlf)

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
+import platform
 import re
 import statistics
 import subprocess
@@ -321,6 +323,29 @@ def git_commit(path: Path | str | None) -> str | None:
     return head.stdout.strip() + ("-dirty" if status.stdout.strip() else "")
 
 
+# Libraries whose versions can change retrieval or scoring results.
+RESULT_LIBRARIES = ("torch", "sentence-transformers", "transformers", "qdrant-client", "tree-sitter",
+                    "tree-sitter-java", "rank-bm25", "networkx")
+
+
+def library_versions() -> dict[str, str | None]:
+    from importlib.metadata import PackageNotFoundError, version
+
+    found: dict[str, str | None] = {"python": platform.python_version()}
+    for name in RESULT_LIBRARIES:
+        try:
+            found[name] = version(name)
+        except PackageNotFoundError:
+            found[name] = None
+    return found
+
+
+def content_sha256(path: Path | str) -> str:
+    """SHA-256 of a text file with line endings normalised, so a CRLF checkout hashes like an LF one."""
+    data = Path(path).read_bytes().replace(b"\r\n", b"\n")
+    return hashlib.sha256(data).hexdigest()
+
+
 def run_metadata(
     atlas: CodeAtlas,
     eval_set: Path | str,
@@ -341,6 +366,7 @@ def run_metadata(
         "repo_remote": git_remote(atlas.repo_path),
         "repo_commit": git_commit(atlas.repo_path),
         "eval_set": display_path(eval_set),
+        "eval_set_sha256": content_sha256(eval_set),
         "questions": len(items),
         "answerable": sum(1 for i in items if i.answerable),
         # The judge uses a reference answer only when it is marked reviewed.
@@ -359,6 +385,7 @@ def run_metadata(
             f"rerank ({settings.reranker_model or 'none'})": atlas.engine.threshold_for("rerank"),
         },
     }
+    meta["versions"] = library_versions()
     if initial:
         meta["index_build"] = {
             "files": initial.get("files_scanned"),

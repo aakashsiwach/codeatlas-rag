@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     # == Storage ==
     # Directory for the SQLite store, the embedded Qdrant data and traces.jsonl.
     index_dir: Path = Path(".codeatlas")
-    # The repository the API indexes by default (POST /api/index, the webhook, `codeatlas demo`).
+    # The repository the API indexes by default (POST /api/index and the GitHub webhook).
     repo_path: Path | None = None
     # Qdrant server URL. Unset: embedded Qdrant under index_dir. ":memory:" keeps vectors in memory (tests).
     qdrant_url: str | None = None

@@ -12,3 +12,10 @@ def test_configuration_docs_are_up_to_date():
         [sys.executable, str(ROOT / "scripts" / "gen_config_docs.py"), "--check"], capture_output=True, text=True
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_openapi_schema_is_up_to_date():
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "export_openapi.py"), "--check"], capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

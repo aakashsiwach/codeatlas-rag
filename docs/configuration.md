@@ -16,7 +16,7 @@ This page is generated from `codeatlas/config.py` by `scripts/gen_config_docs.py
 | Variable | Default | Meaning |
 |---|---|---|
 | `CODEATLAS_INDEX_DIR` | `".codeatlas"` | Directory for the SQLite store, the embedded Qdrant data and traces.jsonl. |
-| `CODEATLAS_REPO_PATH` | unset | The repository the API indexes by default (POST /api/index, the webhook, `codeatlas demo`). |
+| `CODEATLAS_REPO_PATH` | unset | The repository the API indexes by default (POST /api/index and the GitHub webhook). |
 | `CODEATLAS_QDRANT_URL` | unset | Qdrant server URL. Unset: embedded Qdrant under index_dir. ":memory:" keeps vectors in memory (tests). |
 | `CODEATLAS_QDRANT_API_KEY` | unset | API key for a Qdrant server. |
 | `CODEATLAS_COLLECTION` | `"codeatlas"` | Qdrant collection name. |

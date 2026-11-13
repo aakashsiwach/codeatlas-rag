@@ -172,3 +172,14 @@ def test_webhook_rejects_missing_or_malformed_signatures(client, atlas):
     atlas.settings.webhook_secret = None
     unconfigured = TestClient(create_app(atlas=atlas))
     assert unconfigured.post("/api/webhook/github", content=body, headers={**headers, "X-Hub-Signature-256": sign(body)}).status_code == 503
+
+
+def test_config_endpoint_describes_the_active_setup_without_secrets(client, atlas):
+    atlas.settings.api_token = None
+    body = client.get("/api/config").json()
+    assert body["default_mode"] == atlas.config().name and body["default_k"] == atlas.settings.default_k
+    assert body["embedder"] == "hashing-512" and body["chunker"] == "ast"
+    assert set(body["options"]) >= {"demote_tests", "graph_slots", "rerank_pool"}
+    assert body["thresholds"]["vector"] == atlas.settings.min_vector_similarity
+    assert body["auth_required"] is False and "api_token" not in body
+

@@ -88,6 +88,33 @@ def create_app(settings: Settings | None = None, atlas: CodeAtlas | None = None)
     def health() -> dict[str, Any]:
         return {"status": "ok", "version": __version__}
 
+    @app.get("/api/config")
+    def active_config() -> dict[str, Any]:
+        """The active setup, for the UI settings panel. No secrets: provider and model names only."""
+        from codeatlas.retrieval.retriever import FLAGS, MODES, OPTIONS, RetrievalConfig
+
+        default = atlas.config()
+        repo = atlas.repo_path
+        return {
+            "version": __version__,
+            "repo": repo.name if repo else None,
+            "default_mode": default.name,
+            "default_k": default.k,
+            "modes": list(MODES),
+            "flags": list(FLAGS),
+            "options": {name: getattr(default, name) for name in OPTIONS},
+            "option_defaults": {name: getattr(RetrievalConfig(), name) for name in OPTIONS},
+            "embedder": atlas.store.get_meta("embedder"),
+            "chunker": atlas.store.get_meta("chunker"),
+            "reranker": settings.reranker_model or None,
+            "llm": f"{settings.llm_provider}:{settings.llm_model}" if settings.llm_provider != "none" else None,
+            "thresholds": {
+                "vector": atlas.engine.threshold_for("vector"),
+                "rerank": atlas.engine.threshold_for("rerank"),
+            },
+            "auth_required": bool(settings.api_token),
+        }
+
     @app.get("/api/stats")
     def stats() -> dict[str, Any]:
         return atlas.stats()

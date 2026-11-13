@@ -45,3 +45,23 @@ jobs:
         run: npm test
       - name: Build
         run: npx vite build
+
+  infra:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.17.1"
+      - name: Format
+        run: terraform fmt -check -recursive -diff
+      - name: Init (no backend, no AWS credentials)
+        run: terraform init -backend=false -input=false
+      - name: Validate
+        run: terraform validate
+      - name: Lint the Dockerfile
+        working-directory: .
+        run: docker build --check .

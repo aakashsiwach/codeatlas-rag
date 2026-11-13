@@ -125,8 +125,18 @@ def evaluate_cmd(
     judge: bool = typer.Option(False, "--judge", help="Score faithfulness with an LLM judge (implies --answers)"),
     out: Path = typer.Option(Path("results"), help="Directory for JSON and Markdown results"),
     weakest: int = typer.Option(5, help="Weakest questions to list per configuration"),
+    final: bool = typer.Option(
+        False, "--final", help="Allow a held-out *-test.yaml set: only once the setup is frozen"
+    ),
 ) -> None:
     """Compare retrieval configurations on an evaluation set."""
+    if is_held_out(eval_set) and not final:
+        typer.secho(
+            f"{eval_set.name} is a held-out test split. Tune on the dev split; run this only once the setup is "
+            "frozen, with --final.",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(2)
     from codeatlas.eval.dataset import load_eval_set
     from codeatlas.eval.runner import category_markdown, evaluate, report_markdown, run_metadata, to_markdown
     from codeatlas.retrieval.retriever import RetrievalConfig
@@ -194,6 +204,11 @@ def serve(
     from codeatlas.api.app import create_app
 
     uvicorn.run(create_app(settings), host=host, port=port)
+
+
+def is_held_out(eval_set: Path) -> bool:
+    """Held-out test splits are named *-test.yaml / *-test.yml."""
+    return eval_set.stem.lower().endswith("-test") and eval_set.suffix.lower() in (".yaml", ".yml")
 
 
 def _money(value: float | None) -> str:

@@ -263,3 +263,15 @@ def test_reports_record_relative_paths_remote_without_credentials_and_the_llm_th
     assert not any(str(v).startswith(("/", "\\")) or ":\\" in str(v) for v in meta.values() if isinstance(v, str))
     assert display_path(repo / "src", base=repo) == "src"
     assert display_path(Path("/elsewhere/x"), base=repo) == "x"
+
+
+def test_eval_refuses_the_held_out_split_without_final(tmp_path, monkeypatch):
+    from codeatlas.cli import is_held_out
+
+    held_out = tmp_path / "petclinic-test.yaml"
+    held_out.write_text(FIXTURE_EVAL.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(app, ["eval", str(held_out)])
+    assert result.exit_code == 2 and "held-out test split" in result.output and "--final" in result.output
+    assert is_held_out(Path("eval/petclinic-test.yaml")) and is_held_out(Path("x-TEST.yml"))
+    assert not is_held_out(Path("eval/petclinic-dev.yaml")) and not is_held_out(Path("contest.yaml"))

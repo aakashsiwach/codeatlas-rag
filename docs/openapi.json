@@ -493,6 +493,22 @@
               ],
               "title": "X-Hub-Signature-256"
             }
+          },
+          {
+            "in": "header",
+            "name": "x-github-delivery",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Github-Delivery"
+            }
           }
         ],
         "responses": {

@@ -55,7 +55,9 @@ def file_sha256(path: Path) -> str:
 def load_source_file(repo: Path, rel_path: str, exclude_dirs: list[str], max_bytes: int) -> SourceFile | None:
     """Return a SourceFile for rel_path, or None when it is excluded, unsupported or too large."""
     rel = PurePosixPath(rel_path.replace("\\", "/"))
-    if any(part in exclude_dirs for part in rel.parts[:-1]):
+    # Same directories as discover() skips, so a targeted (webhook) update indexes exactly what a full scan
+    # would: excluded names and hidden directories (.git, .github, .idea, ...).
+    if any(part in exclude_dirs or part.startswith(".") for part in rel.parts[:-1]):
         return None
     kind = classify(str(rel))
     abs_path = repo / Path(*rel.parts)

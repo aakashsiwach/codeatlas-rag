@@ -110,3 +110,20 @@ def test_a_locked_embedded_index_gives_a_clear_error(tmp_path, monkeypatch):
     result = CliRunner().invoke(app, ["--index-dir", str(tmp_path / "idx"), "stats"])
     assert result.exit_code == 3 and "--index-dir" in result.output and "Traceback" not in result.output
     holder.client.close()
+
+
+def test_targeted_and_full_indexing_skip_the_same_directories(tmp_path):
+    from codeatlas.ingest.walker import discover, load_source_file
+
+    (tmp_path / ".github" / "workflows").mkdir(parents=True)
+    (tmp_path / ".github" / "workflows" / "ci.yml").write_text("on: push", encoding="utf-8")
+    (tmp_path / "target").mkdir()
+    (tmp_path / "target" / "Gen.java").write_text("class Gen {}", encoding="utf-8")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "App.java").write_text("class App {}", encoding="utf-8")
+    excludes = ["target"]
+
+    full = {sf.path for sf in discover(tmp_path, excludes, 1_000_000)}
+    targeted = {p for p in (".github/workflows/ci.yml", "target/Gen.java", "src/App.java")
+                if load_source_file(tmp_path, p, excludes, 1_000_000) is not None}
+    assert full == targeted == {"src/App.java"}

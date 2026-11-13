@@ -209,14 +209,14 @@ You need model access for the model in your AWS account. Credentials come from a
 
 ```powershell
 $env:CODEATLAS_LLM_PROVIDER = "bedrock"
-$env:CODEATLAS_LLM_MODEL    = "<inference-profile-id>"  # from the Bedrock console
+$env:CODEATLAS_LLM_MODEL    = "global.anthropic.claude-sonnet-5-5"
 $env:CODEATLAS_AWS_REGION   = "us-east-1"
 $env:CODEATLAS_AWS_PROFILE  = "codeatlas"               # your profile name
 codeatlas doctor --llm                                  # ONE 1-token call
 codeatlas ask "How does searching for owners by last name work?"
 ```
 ```bash
-export CODEATLAS_LLM_PROVIDER=bedrock CODEATLAS_LLM_MODEL="<inference-profile-id>"  # from the Bedrock console
+export CODEATLAS_LLM_PROVIDER=bedrock CODEATLAS_LLM_MODEL=global.anthropic.claude-sonnet-5-5
 export CODEATLAS_AWS_REGION=us-east-1 CODEATLAS_AWS_PROFILE=codeatlas
 codeatlas doctor --llm                                  # ONE 1-token call
 codeatlas ask "How does searching for owners by last name work?"

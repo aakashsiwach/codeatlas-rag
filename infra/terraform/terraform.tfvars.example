@@ -1,8 +1,6 @@
 # Copy to terraform.tfvars (git-ignored) and fill in. No secrets belong here: the API token lives in SSM.
 aws_profile        = "codeatlas"
 budget_alert_email = "you@example.com"
-bedrock_model_id            = "<inference-profile-id>"  # as in CODEATLAS_LLM_MODEL
-bedrock_foundation_model_id = "<foundation-model-id>"   # the profile id without its geography prefix
 # image_tag        = "<git sha>"  # set after the first push, see docs/deploy.md
 # task_cpu         = 2048         # for the quality setup
-# llm_prices       = { "bedrock:<inference-profile-id>" = { input_per_mtok = 0, output_per_mtok = 0 } }
+# llm_prices       = { "bedrock:global.anthropic.claude-sonnet-5-5" = { input_per_mtok = 0, output_per_mtok = 0 } }

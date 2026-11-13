@@ -96,7 +96,7 @@ class RetrievalConfig:
 class RetrievalResult:
     chunks: list[ScoredChunk]
     confidence: float
-    confidence_source: str  # vector | rerank | bm25 | graph | none
+    confidence_source: str  # vector | rerank | bm25 | none
     queries: list[str]
     graph_report: str | None = None
     timings_ms: dict[str, float] = field(default_factory=dict)
@@ -209,9 +209,9 @@ class Retriever:
         report = None
         if cfg.graph and self.graph is not None:
             t3 = time.perf_counter()
+            # The graph report does not change the confidence: a question that merely names a class is not
+            # thereby answerable, so refusal stays governed by the retrieval scores.
             results, report = self._graph_expand(query, results, cfg)
-            if report:
-                confidence, source = 1.0, "graph"
             timings["graph"] = _ms(t3)
 
         timings["total"] = _ms(t0)

@@ -82,6 +82,9 @@ class Settings(BaseSettings):
     default_k: int = 8
     min_vector_similarity: float = 0.30
     min_rerank_confidence: float = 0.05
+    # Per-model refusal thresholds, as JSON {"<embedder name or reranker model>": <threshold>}; they override
+    # the two above for that model. Calibrate them on a dev split with `codeatlas eval --calibrate`.
+    min_confidence_by_model: dict[str, float] = {}
 
     # API, webhook and tracing
     cors_origins: list[str] = ["http://localhost:5173"]

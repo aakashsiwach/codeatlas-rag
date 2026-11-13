@@ -125,6 +125,9 @@ def evaluate_cmd(
     judge: bool = typer.Option(False, "--judge", help="Score faithfulness with an LLM judge (implies --answers)"),
     out: Path = typer.Option(Path("results"), help="Directory for JSON and Markdown results"),
     weakest: int = typer.Option(5, help="Weakest questions to list per configuration"),
+    calibrate: bool = typer.Option(
+        False, "--calibrate", help="Report the refusal threshold that best separates (un)answerable questions"
+    ),
     final: bool = typer.Option(
         False, "--final", help="Allow a held-out *-test.yaml set: only once the setup is frozen"
     ),
@@ -138,7 +141,16 @@ def evaluate_cmd(
         )
         raise typer.Exit(2)
     from codeatlas.eval.dataset import load_eval_set
-    from codeatlas.eval.runner import category_markdown, evaluate, report_markdown, run_metadata, to_markdown
+    from codeatlas.eval.runner import calibrate as calibrate_report
+    from codeatlas.eval.runner import (
+        calibration_markdown,
+        category_markdown,
+        evaluate,
+        report_markdown,
+        run_metadata,
+        to_markdown,
+        total_cost,
+    )
     from codeatlas.retrieval.retriever import RetrievalConfig
 
     atlas = _atlas(ctx)
@@ -156,9 +168,15 @@ def evaluate_cmd(
 
     def write_reports() -> None:
         """Rewritten after every configuration, so a crash or Ctrl-C keeps the finished ones."""
-        (out / f"eval-{stamp}.md").write_text(report_markdown(reports, metadata, weakest), encoding="utf-8")
+        calibrations = [c for r in reports if (c := calibrate_report(r))] if calibrate else None
+        (out / f"eval-{stamp}.md").write_text(
+            report_markdown(reports, metadata, weakest, calibrations), encoding="utf-8"
+        )
         (out / f"eval-{stamp}.json").write_text(
-            json.dumps({"metadata": metadata, "reports": [r.to_dict() for r in reports]}, indent=2),
+            json.dumps(
+                {"metadata": metadata, "reports": [r.to_dict() for r in reports], "calibration": calibrations},
+                indent=2,
+            ),
             encoding="utf-8",
         )
 
@@ -172,7 +190,9 @@ def evaluate_cmd(
             typer.secho(f"  {errors} question(s) failed with LLM errors; see the report", fg=typer.colors.YELLOW)
 
     typer.echo("\n" + to_markdown(reports) + "\n\n" + category_markdown(reports))
-    from codeatlas.eval.runner import total_cost
+
+    if calibrate:
+        typer.echo("\nRefusal calibration:\n" + calibration_markdown([c for r in reports if (c := calibrate_report(r))]))
 
     cost = total_cost(reports)
     if cost:

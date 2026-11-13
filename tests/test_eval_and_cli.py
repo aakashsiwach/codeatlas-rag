@@ -279,3 +279,60 @@ def test_eval_refuses_the_held_out_split_without_final(tmp_path, monkeypatch):
     assert result.exit_code == 2 and "held-out test split" in result.output and "--final" in result.output
     assert is_held_out(Path("eval/petclinic-test.yaml")) and is_held_out(Path("x-TEST.yml"))
     assert not is_held_out(Path("eval/petclinic-dev.yaml")) and not is_held_out(Path("contest.yaml"))
+
+
+def test_refusal_thresholds_are_per_model(atlas):
+    from codeatlas.answer import confidence_threshold
+
+    s = atlas.settings.model_copy(update={"min_vector_similarity": 0.3, "min_rerank_confidence": 0.05,
+                                          "reranker_model": "rerank-a",
+                                          "min_confidence_by_model": {"rerank-a": 0.4, "hashing-512": 0.6}})
+    assert confidence_threshold(s, "rerank", "hashing-512") == 0.4
+    assert confidence_threshold(s, "vector", "hashing-512") == 0.6
+    assert confidence_threshold(s, "vector", "other-embedder") == 0.3
+    assert confidence_threshold(s.model_copy(update={"reranker_model": "rerank-b"}), "rerank", "x") == 0.05
+    assert confidence_threshold(s, "bm25", "x") is None
+
+
+def test_calibration_picks_the_separating_threshold():
+    from codeatlas.eval.runner import EvalReport, ItemResult, calibrate
+
+    def item(i, answerable, conf):
+        return ItemResult(id=str(i), question="q", category="c", answerable=answerable, latency_ms=1.0, retrieved=[],
+                          confidence=conf, confidence_source="rerank", threshold=0.05, threshold_key="rerank-a")
+
+    confs = [(True, 0.9), (True, 0.7), (True, 0.55), (True, 0.2), (False, 0.3), (False, 0.1), (False, 0.05)]
+    report = EvalReport(config="hybrid+rerank", k=5, items=[item(i, a, c) for i, (a, c) in enumerate(confs)])
+    cal = calibrate(report)
+    # Best cut lies between 0.30 (highest unanswerable) and 0.55: all unanswerable refused, one false refusal.
+    assert 0.3 < cal["best_threshold"] < 0.55
+    assert cal["best"]["unanswerable_refused"] == "3/3" and cal["best"]["false_refusals"] == "1/4"
+    assert cal["current_threshold"] == 0.05 and cal["current"]["unanswerable_refused"] == "0/3"
+    assert cal["model"] == "rerank-a"
+    assert calibrate(EvalReport(config="x", k=5, items=[item(0, True, 0.5)])) is None  # needs both classes
+
+
+def test_eval_items_record_confidence_and_cli_calibrates(tmp_path, repo, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CODEATLAS_EMBEDDING_PROVIDER", "hashing")
+    monkeypatch.setenv("CODEATLAS_QDRANT_URL", ":memory:")
+    monkeypatch.setenv("CODEATLAS_RERANKER_MODEL", "")
+    index_dir = str(tmp_path / "cal-index")
+    runner = CliRunner()
+    assert runner.invoke(app, ["--index-dir", index_dir, "index", str(repo)]).exit_code == 0
+    out = tmp_path / "results"
+    result = runner.invoke(app, ["--index-dir", index_dir, "eval", str(FIXTURE_EVAL), "--configs", "hybrid",
+                                 "--calibrate", "--out", str(out)])
+    assert result.exit_code == 0, result.output
+    assert "Refusal calibration" in result.output
+    data = json.loads(next(out.glob("eval-*.json")).read_text(encoding="utf-8"))
+    assert data["calibration"][0]["config"] == "hybrid" and "best_threshold" in data["calibration"][0]
+    assert "vector (hashing-512)" in data["metadata"]["thresholds"]
+    assert "## Refusal calibration" in next(out.glob("eval-*.md")).read_text(encoding="utf-8")
+
+
+def test_eval_items_record_the_confidence_and_threshold_used(atlas):
+    report = evaluate(atlas, load_eval_set(FIXTURE_EVAL), RetrievalConfig.parse("hybrid+graph", k=5))
+    for r in report.items:
+        assert r.confidence_source == "vector" and r.threshold_key == "hashing-512"  # graph never overrides it
+        assert r.threshold == atlas.settings.min_vector_similarity and r.confidence is not None

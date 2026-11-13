@@ -38,6 +38,10 @@ class ItemResult:
     recall_deep: float | None = None  # recall at EvalReport.deep_k
     hit: float | None = None
     reciprocal_rank: float | None = None
+    confidence: float | None = None  # retrieval confidence that the refusal gate compares
+    confidence_source: str | None = None
+    threshold: float | None = None  # refusal threshold that applied to it
+    threshold_key: str | None = None  # the model whose score it is (embedder or reranker)
     answer: str | None = None
     refused: bool | None = None
     answer_truncated: bool | None = None  # the answer hit the output limit
@@ -179,9 +183,12 @@ def evaluate(
                 report.items.append(_failed_item(item, exc))
                 continue
             chunks = [c for c in answer.context if c.kind != "graph"]
+            confidence, confidence_source = answer.confidence, answer.confidence_source
         else:
             run_cfg = deep_cfg if deep_cfg and not cfg.graph else cfg
-            chunks = [sc.chunk for sc in atlas.retriever.retrieve(item.question, run_cfg).chunks]
+            rr = atlas.retriever.retrieve(item.question, run_cfg)
+            chunks = [sc.chunk for sc in rr.chunks]
+            confidence, confidence_source = rr.confidence, rr.confidence_source
         latency = (time.perf_counter() - start) * 1000
         deep_chunks = None
         if deep_cfg:
@@ -198,6 +205,10 @@ def evaluate(
             latency_ms=round(latency, 1),
             retrieved=[f"{c.location} {c.symbol or ''}".strip() for c in chunks[: cfg.k]],
             expected=[e.path + (f"::{e.symbol}" if e.symbol else "") for e in item.expected_sources],
+            confidence=round(confidence, 4),
+            confidence_source=confidence_source,
+            threshold=atlas.engine.threshold_for(confidence_source),
+            threshold_key=_threshold_key(atlas, confidence_source),
         )
         if item.answerable and item.expected_sources:
             result.recall = recall_at_k(item.expected_sources, chunks, cfg.k)
@@ -234,6 +245,10 @@ def evaluate(
                         result.judge_error = verdict["judge_error"]
         report.items.append(result)
     return report
+
+
+def _threshold_key(atlas: CodeAtlas, source: str) -> str | None:
+    return {"rerank": atlas.settings.reranker_model, "vector": atlas.embedder.name}.get(source)
 
 
 def _add_usage(result: ItemResult, atlas: CodeAtlas, input_tokens: int, output_tokens: int) -> None:
@@ -333,6 +348,11 @@ def run_metadata(
         "reranker": settings.reranker_model or None,
         "chunks": atlas.store.count_chunks(),
         "graph": atlas.graph.stats(),
+        # Refusal thresholds in force (per model, after CODEATLAS_MIN_CONFIDENCE_BY_MODEL overrides).
+        "thresholds": {
+            f"vector ({atlas.embedder.name})": atlas.engine.threshold_for("vector"),
+            f"rerank ({settings.reranker_model or 'none'})": atlas.engine.threshold_for("rerank"),
+        },
     }
     if initial:
         meta["index_build"] = {
@@ -347,8 +367,6 @@ def run_metadata(
         if judge:
             meta["judge_thinking"] = thinking_for(settings, "judge") or "model default"
             meta["answer_thinking"] = thinking_for(settings, "answer") or "model default"
-        meta["min_vector_similarity"] = settings.min_vector_similarity
-        meta["min_rerank_confidence"] = settings.min_rerank_confidence
     return meta
 
 
@@ -416,7 +434,12 @@ def weakest_markdown(reports: list[EvalReport], n: int = 5) -> str:
     return "\n".join(lines).rstrip()
 
 
-def report_markdown(reports: list[EvalReport], metadata: dict[str, Any], weakest: int = 5) -> str:
+def report_markdown(
+    reports: list[EvalReport],
+    metadata: dict[str, Any],
+    weakest: int = 5,
+    calibrations: list[dict[str, Any]] | None = None,
+) -> str:
     """Full Markdown report: run metadata, overall table, per-category table and weakest questions."""
     meta_lines = []
     for key, value in metadata.items():
@@ -438,6 +461,13 @@ def report_markdown(reports: list[EvalReport], metadata: dict[str, Any], weakest
     cost = total_cost(reports)
     if cost:
         sections[4:4] = ["## LLM cost (answers + judge)", cost_markdown(reports, cost)]
+    if calibrations:
+        sections[4:4] = [
+            "## Refusal calibration",
+            "Refuse when confidence < threshold. Best = highest balanced accuracy (answerable and "
+            "unanswerable weighted equally), then fewest false refusals. Calibrate on dev only.",
+            calibration_markdown(calibrations),
+        ]
     return "\n\n".join(sections) + "\n"
 
 
@@ -467,3 +497,76 @@ def cost_markdown(reports: list[EvalReport], total: dict[str, Any]) -> str:
 
 def _usd(value: Any) -> str:
     return f"${value:.4f}" if isinstance(value, float) else str(value)
+
+
+# --- refusal calibration --------------------------------------------------------------------
+
+
+def _refusal_scores(rows: list[tuple[float, bool]], threshold: float) -> dict[str, Any]:
+    """Refuse when confidence < threshold. Balanced accuracy weighs both classes equally, because answerable
+    questions outnumber unanswerable ones and plain accuracy would favour never refusing."""
+    answerable = [c for c, a in rows if a]
+    unanswerable = [c for c, a in rows if not a]
+    false_refusals = sum(1 for c in answerable if c < threshold)
+    caught = sum(1 for c in unanswerable if c < threshold)
+    return {
+        "balanced_accuracy": round(0.5 * (caught / len(unanswerable) + 1 - false_refusals / len(answerable)), 4),
+        "accuracy": round((caught + len(answerable) - false_refusals) / len(rows), 4),
+        "false_refusals": f"{false_refusals}/{len(answerable)}",
+        "unanswerable_refused": f"{caught}/{len(unanswerable)}",
+    }
+
+
+def calibrate(report: EvalReport) -> dict[str, Any] | None:
+    """The refusal threshold that best separates answerable from unanswerable questions for one config.
+
+    Candidates are midpoints between consecutive observed confidences (plus both ends); ties prefer fewer
+    false refusals, then the lower threshold. Run this on a dev split only."""
+    scored = [r for r in report.items if r.confidence is not None]
+    rows = [(r.confidence, r.answerable) for r in scored]
+    if not any(a for _, a in rows) or all(a for _, a in rows):
+        return None
+    sources = sorted({r.confidence_source for r in scored})
+    values = sorted({c for c, _ in rows})
+    candidates = [values[0] - 1e-4] + [(a + b) / 2 for a, b in zip(values, values[1:])] + [values[-1] + 1e-4]
+
+    def key(t: float) -> tuple:
+        s = _refusal_scores(rows, t)
+        return (s["balanced_accuracy"], -int(s["false_refusals"].split("/")[0]), -t)
+
+    best = max(candidates, key=key)
+    current = next((r.threshold for r in scored if r.threshold is not None), None)
+    answerable = [c for c, a in rows if a]
+    unanswerable = [c for c, a in rows if not a]
+    return {
+        "config": report.config,
+        "source": ", ".join(sources),
+        "model": next((r.threshold_key for r in scored if r.threshold_key), None),
+        "answerable_confidence": [round(min(answerable), 4), round(statistics.median(answerable), 4), round(max(answerable), 4)],
+        "unanswerable_confidence": [round(min(unanswerable), 4), round(statistics.median(unanswerable), 4), round(max(unanswerable), 4)],
+        "current_threshold": current,
+        "current": _refusal_scores(rows, current) if current is not None else None,
+        "best_threshold": round(best, 4),
+        "best": _refusal_scores(rows, best),
+    }
+
+
+def calibration_markdown(calibrations: list[dict[str, Any]]) -> str:
+    header = ["config", "source (model)", "answerable min/med/max", "unanswerable min/med/max", "current threshold",
+              "current bal. acc", "best threshold", "best bal. acc", "false refusals", "unanswerable refused"]
+    rows = []
+    for c in calibrations:
+        cur = c["current"] or {}
+        rows.append([
+            c["config"],
+            f"{c['source']} ({c['model']})",
+            "/".join(f"{v:.3f}" for v in c["answerable_confidence"]),
+            "/".join(f"{v:.3f}" for v in c["unanswerable_confidence"]),
+            _cell(c["current_threshold"]),
+            _cell(cur.get("balanced_accuracy")),
+            f"{c['best_threshold']:.4f}",
+            f"{c['best']['balanced_accuracy']:.3f}",
+            c["best"]["false_refusals"],
+            c["best"]["unanswerable_refused"],
+        ])
+    return "\n".join(_table(header, rows))

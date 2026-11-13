@@ -253,6 +253,7 @@ All settings are environment variables prefixed with `CODEATLAS_` (or entries in
 | `DEFAULT_MODE` | `hybrid+graph` | Any mode spec |
 | `MIN_VECTOR_SIMILARITY` | `0.30` | Refusal threshold without reranking |
 | `MIN_RERANK_CONFIDENCE` | `0.05` | Refusal threshold with reranking; tune with the unanswerable eval questions |
+| `MIN_CONFIDENCE_BY_MODEL` | none | JSON per embedder or reranker model, overriding the two above; calibrate on dev with `codeatlas eval … --calibrate`. The code graph never raises confidence |
 | `LLM_PRICES` | none | JSON prices per `"<provider>:<model>"` (`input_per_mtok`, `output_per_mtok`); Bedrock and the Anthropic API are separate entries. Unlisted models report cost as `unpriced`, never $0. Eval reports sum answer and judge cost |
 | `EMBEDDING_COST_PER_MTOK` | `0` | Price used for index-run embedding cost |
 

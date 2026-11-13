@@ -193,6 +193,17 @@ def count_uncited_sentences(text: str) -> int:
     return count
 
 
+def confidence_threshold(settings: Settings, source: str, embedder_name: str) -> float | None:
+    """The refusal threshold that applies to a confidence source (None: that source never refuses)."""
+    if source == "rerank":
+        key, default = settings.reranker_model, settings.min_rerank_confidence
+    elif source == "vector":
+        key, default = embedder_name, settings.min_vector_similarity
+    else:
+        return None
+    return settings.min_confidence_by_model.get(key, default)
+
+
 class AnswerEngine:
     def __init__(
         self,
@@ -273,11 +284,14 @@ class AnswerEngine:
     def is_low_confidence(self, rr: RetrievalResult) -> bool:
         if not rr.chunks and not rr.graph_report:
             return True
-        if rr.confidence_source == "rerank":
-            return rr.confidence < self.settings.min_rerank_confidence
-        if rr.confidence_source == "vector":
-            return rr.confidence < self.settings.min_vector_similarity
-        return False
+        threshold = self.threshold_for(rr.confidence_source)
+        return threshold is not None and rr.confidence < threshold
+
+    def threshold_for(self, source: str) -> float | None:
+        """Refusal threshold for a confidence source, per model: scores from different embedders or rerankers
+        are on different scales, so CODEATLAS_MIN_CONFIDENCE_BY_MODEL (calibrated with `eval --calibrate`)
+        overrides the global setting for the model that produced the score."""
+        return confidence_threshold(self.settings, source, self.retriever.embedder.name)
 
     # --- internals -------------------------------------------------------------------------
 

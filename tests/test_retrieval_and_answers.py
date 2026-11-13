@@ -72,7 +72,7 @@ def test_each_mode_finds_the_retry_logic(atlas, mode):
 
 def test_graph_mode_answers_impact_questions(atlas):
     rr = atlas.retrieve("What breaks if I change the Customer entity?", mode="hybrid+graph", k=8)
-    assert rr.confidence_source == "graph"
+    assert rr.confidence_source == "vector" and rr.graph_report  # the report does not override confidence
     assert "PaymentService#charge" in rr.graph_report
     assert rr.chunks[0].chunk.path.endswith("customer/Customer.java")  # retrieval finds the named entity
     assert len(rr.chunks) <= 8

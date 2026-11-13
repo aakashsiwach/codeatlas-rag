@@ -69,7 +69,12 @@ class SentenceTransformerEmbedder:
 
     @property
     def dim(self) -> int:
-        return int(self._model.get_sentence_embedding_dimension())
+        # sentence-transformers renamed the method; fall back to the old name for older releases.
+        getter = getattr(self._model, "get_embedding_dimension", None) or self._model.get_sentence_embedding_dimension
+        dim = getter()
+        if dim is None:  # e.g. models whose output size depends on the input
+            raise ValueError(f"{self.name} does not report a fixed embedding dimension; choose another model")
+        return int(dim)
 
     def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
         if not texts:

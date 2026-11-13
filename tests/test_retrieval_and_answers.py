@@ -192,3 +192,16 @@ def test_a_variant_refusal_is_recorded_as_refused(settings, repo):
     atlas.index(repo)
     answer = atlas.ask("Where is the payment retry logic?", mode="hybrid", k=5)
     assert answer.refused and answer.uncited_sentences == 0
+
+
+def test_citations_ignore_code_and_accept_lists_and_ranges():
+    text = (
+        "The handler reads `args[1]` and indexes `owners[2]` [1].\n"
+        "```java\nString id = parts[3];\n```\n"
+        "~~~\nreturn list[4];\n~~~\n"
+        "It is validated [2, 3] and saved [5-6]; see also [7–8] and [99]."
+    )
+    valid, invalid = extract_citations(text, 7)
+    assert valid == [1, 2, 3, 5, 6, 7] and invalid == [8, 99]
+    assert extract_citations("[2][4]", 5) == ([2, 4], [])
+    assert count_uncited_sentences("It is validated against the owner's pets [2, 3].") == 0

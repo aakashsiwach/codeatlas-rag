@@ -41,8 +41,11 @@ def is_refusal(text: str) -> bool:
     return _REFUSAL_RE.search(" ".join(head.split())) is not None
 
 
-_CITE = re.compile(r"\[(\d+)\]")
-_CODE_BLOCK = re.compile(r"```.*?```", re.DOTALL)
+# [1], [1, 2], [1-3] / [1–3]; adjacent groups such as [2][4] are separate matches.
+_CITE = re.compile(r"\[(\d+(?:\s*[,\-–]\s*\d+)*)\]")
+_CODE_BLOCK = re.compile(r"(```|~~~).*?\1", re.DOTALL)
+_INLINE_CODE = re.compile(r"`[^`\n]*`")
+_MAX_RANGE = 50
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 
 
@@ -144,21 +147,37 @@ def build_prompt(question: str, context: list[Chunk]) -> str:
     )
 
 
+def strip_code(text: str) -> str:
+    """Remove fenced and inline code, where brackets such as args[1] are not citations."""
+    return _INLINE_CODE.sub("", _CODE_BLOCK.sub("", text))
+
+
+def _cited_numbers(group: str) -> list[int]:
+    out: list[int] = []
+    for part in group.split(","):
+        bounds = [int(b) for b in re.split(r"\s*[\-–]\s*", part.strip()) if b]
+        if len(bounds) == 2 and bounds[0] <= bounds[1] and bounds[1] - bounds[0] < _MAX_RANGE:
+            out.extend(range(bounds[0], bounds[1] + 1))
+        else:
+            out.extend(bounds)
+    return out
+
+
 def extract_citations(text: str, n_blocks: int) -> tuple[list[int], list[int]]:
-    """Return (valid, invalid) citation indexes in order of first appearance."""
+    """Return (valid, invalid) citation indexes in order of first appearance, ignoring code."""
     valid: list[int] = []
     invalid: list[int] = []
-    for match in _CITE.finditer(text):
-        i = int(match.group(1))
-        bucket = valid if 1 <= i <= n_blocks else invalid
-        if i not in bucket:
-            bucket.append(i)
+    for match in _CITE.finditer(strip_code(text)):
+        for i in _cited_numbers(match.group(1)):
+            bucket = valid if 1 <= i <= n_blocks else invalid
+            if i not in bucket:
+                bucket.append(i)
     return valid, invalid
 
 
 def count_uncited_sentences(text: str) -> int:
     """Sentences that make a claim without any citation (a cheap hallucination signal)."""
-    text = _CODE_BLOCK.sub("", text)
+    text = strip_code(text)
     count = 0
     for line in text.splitlines():
         line = line.strip()

@@ -15,14 +15,14 @@
     "e2e": "playwright test"
   },
   "dependencies": {
-    "react": "18.3.1",
+    "react": "19.3.1",
     "react-dom": "18.3.1"
   },
   "devDependencies": {
     "@playwright/test": "1.65.0",
     "@testing-library/dom": "10.4.2",
     "@testing-library/react": "16.3.3",
-    "@types/react": "18.3.12",
+    "@types/react": "19.3.0",
     "@types/react-dom": "18.3.1",
     "@vitejs/plugin-react": "6.3.0",
     "jsdom": "25.0.1",

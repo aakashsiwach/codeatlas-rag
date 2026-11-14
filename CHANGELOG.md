@@ -22,6 +22,7 @@ All notable changes to this project are documented here. The format follows
   base images.
 - Dependabot ignores updates that cannot be used yet: python-dateutil 3 and uuid-utils 1 (botocore and
   langsmith require older majors), mpmath 1.4 (sympy, via torch, requires <1.4) and TypeScript 7 (deferred).
+- Dependabot runs monthly instead of weekly, with minor and patch updates grouped per ecosystem.
 
 ## [1.0.0] - 2026-11-14
 

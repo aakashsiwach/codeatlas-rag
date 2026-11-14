@@ -27,6 +27,7 @@ All notable changes to this project are documented here. The format follows
   resolve, and `scripts/check_lock.py` fails on any package the install would add without a pin.
 - A `docker` workflow builds the API + UI image and checks that it starts (`/health`, the UI, auth on). It
   runs when the Dockerfile, `pyproject.toml`, the lock or `ui/package*.json` change, and weekly.
+- The build needs hatchling 1.33 or newer (was 1.21).
 
 ## [1.0.0] - 2026-11-14
 

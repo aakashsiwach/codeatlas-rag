@@ -20,6 +20,8 @@ All notable changes to this project are documented here. The format follows
 - The Docker image runs Python 3.12 (was 3.11). `requirements-lock.txt` is resolved on 3.12: the same
   pins plus `setuptools`, which torch needs on Python 3.12+. Dependabot no longer proposes newer Python
   base images.
+- Dependabot ignores updates that cannot be used yet: python-dateutil 3 and uuid-utils 1 (botocore and
+  langsmith require older majors), mpmath 1.4 (sympy, via torch, requires <1.4) and TypeScript 7 (deferred).
 
 ## [1.0.0] - 2026-11-14
 

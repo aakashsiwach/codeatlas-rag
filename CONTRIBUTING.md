@@ -56,6 +56,14 @@ docker run --rm -v "$PWD:/src:ro" -v "$PWD:/out" python:3.12-slim sh -c \
 
 Then keep the header comment of `requirements-lock.txt` and replace the pins below it.
 
+CI checks the lock on Python 3.11 and 3.12 (the `lock` jobs): it must install with every extra, and every
+package that install pulls in must be pinned. To run the same check locally:
+
+```bash
+pip install --dry-run --quiet --report pip-report.json --extra-index-url https://download.pytorch.org/whl/cpu \n  -c requirements-lock.txt ".[all,dev]"
+python scripts/check_lock.py pip-report.json
+```
+
 ## Evaluation rules
 
 The evaluation numbers in the README must stay honest and reproducible:

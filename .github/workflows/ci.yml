@@ -30,6 +30,32 @@ jobs:
         if: ${{ !cancelled() }}
         run: pytest -q -p no:cacheprovider -o console_output_style=classic
 
+  # requirements-lock.txt must install with every extra: pip fails the dry-run when pins conflict (a
+  # Dependabot bump the test job's dev-only install cannot see), and check_lock.py fails on unpinned packages.
+  lock:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    name: lock (${{ matrix.python-version }})
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements-lock.txt
+      - name: Resolve the lock with all extras (dry run)
+        run: >-
+          pip install --dry-run --quiet --report pip-report.json
+          --extra-index-url https://download.pytorch.org/whl/cpu
+          -c requirements-lock.txt ".[all,dev]"
+      - name: Every package is pinned
+        run: python scripts/check_lock.py pip-report.json
+
   ui:
     runs-on: ubuntu-latest
     strategy:

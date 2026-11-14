@@ -29,6 +29,14 @@ All notable changes to this project are documented here. The format follows
   runs when the Dockerfile, `pyproject.toml`, the lock or `ui/package*.json` change, and weekly.
 - The build needs hatchling 1.33 or newer (was 1.21).
 
+### Fixed
+
+- The Docker image now starts with a plain `docker run`. Its default index directory was `.codeatlas`
+  under `/app`, which the non-root user cannot write, so it exited with "Permission denied" unless
+  `CODEATLAS_INDEX_DIR` was set (docker compose sets it). The image now defaults to `/data/index` and
+  declares `/data` as a volume owned by the app user. The `docker` CI job starts it without any index
+  settings, so this cannot regress.
+
 ## [1.0.0] - 2026-11-14
 
 First public release.

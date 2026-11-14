@@ -16,6 +16,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     HF_HOME=/data/hf-cache \
+    CODEATLAS_INDEX_DIR=/data/index \
     CODEATLAS_UI_DIR=/app/ui
 
 RUN apt-get update \
@@ -33,7 +34,10 @@ RUN pip install --extra-index-url https://download.pytorch.org/whl/cpu -c requir
 
 COPY --from=ui /ui/dist /app/ui
 
-RUN useradd --create-home --uid 1000 app && mkdir -p /data && chown app:app /data
+# /data holds everything the app writes (the index, the model cache), owned by the non-root user; /app stays
+# read-only for it. A volume, so a plain `docker run` works and `-v name:/data` keeps the index.
+RUN useradd --create-home --uid 1000 app && mkdir -p /data/index && chown -R app:app /data
+VOLUME /data
 USER app
 
 EXPOSE 8000

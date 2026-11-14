@@ -17,6 +17,9 @@ All notable changes to this project are documented here. The format follows
   global, which hides jsdom's in tests.
 - CI runs the Playwright smoke test on Node 24 and 26 (the API on the fixture repository with the offline
   LLM), so dependency upgrades that break the dev server or the browser fail CI.
+- The Docker image runs Python 3.12 (was 3.11). `requirements-lock.txt` is resolved on 3.12: the same
+  pins plus `setuptools`, which torch needs on Python 3.12+. Dependabot no longer proposes newer Python
+  base images.
 
 ## [1.0.0] - 2026-11-14
 

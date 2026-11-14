@@ -25,6 +25,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # The image stays on Python 3.12, the newest version CI tests and requirements-lock.txt is resolved for.
+      - dependency-name: python
+        versions: [">=3.13"]
 
   - package-ecosystem: terraform
     directory: /infra/terraform

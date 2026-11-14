@@ -45,10 +45,10 @@ Regenerate these after changing the code they come from. Tests fail when they ar
 | `docs/openapi.json` | the FastAPI app | `python scripts/export_openapi.py` |
 | `requirements-lock.txt` | `pyproject.toml` | see below |
 
-To regenerate the lock, resolve it on Linux with Python 3.11, like the Docker image:
+To regenerate the lock, resolve it on Linux with Python 3.12, like the Docker image:
 
 ```bash
-docker run --rm -v "$PWD:/src:ro" -v "$PWD:/out" python:3.11-slim sh -c \
+docker run --rm -v "$PWD:/src:ro" -v "$PWD:/out" python:3.12-slim sh -c \
   "cp -r /src/codeatlas /src/pyproject.toml /src/README.md /src/LICENSE /tmp && cd /tmp && \
    pip install --extra-index-url https://download.pytorch.org/whl/cpu '.[local,anthropic,openai,bedrock,voyage,pdf,dev]' && \
    pip freeze --exclude codeatlas > /out/requirements-lock.new"

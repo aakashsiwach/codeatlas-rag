@@ -36,7 +36,9 @@ jobs:
       - name: Start it and check /health
         run: |
           docker run -d --name codeatlas -p 127.0.0.1:8000:8000 \
-            -e CODEATLAS_INDEX_DIR=/data/index -e CODEATLAS_API_TOKEN=ci-only-token \n            -e CODEATLAS_LLM_PROVIDER=fake codeatlas:ci   # the same index dir as docker-compose.yml
+            -e CODEATLAS_INDEX_DIR=/data/index -e CODEATLAS_API_TOKEN=ci-only-token \
+            -e CODEATLAS_LLM_PROVIDER=fake codeatlas:ci
+          # (the same index directory as docker-compose.yml: /data is the only directory the app user can write)
           for i in $(seq 1 90); do   # up to 3 minutes; it loads the embedding model at start-up
             if curl -sf http://127.0.0.1:8000/health; then echo; break; fi
             sleep 2

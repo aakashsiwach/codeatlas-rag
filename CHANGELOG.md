@@ -6,36 +6,58 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-14
+
+The final planned release: CodeAtlas is feature-complete and maintained on a best-effort basis. This release
+raises the Node requirement, makes the Docker image work with a plain `docker run`, adds CI checks for the
+lock file and the image, updates dependencies, and documents the open work for contributors. Retrieval,
+the evaluation sets, the frozen setups and the README's numbers are unchanged.
+
+### Added
+
+- **Project status** in the README. It states that answer-quality (LLM-judge) evaluation and a live
+  deploy were not run, and that the judge harness and the Terraform are ready for anyone with model access.
+- `ROADMAP.md` with the open work, each item labelled *good first issue*, *help wanted* or *advanced*, and
+  `docs/ISSUES_TO_OPEN.md` with a ready-to-paste issue for each.
+- CONTRIBUTING: the evaluation rules for contributors (tune on dev only, never edit the test split to
+  improve numbers, `--final` only for pre-declared setups, results with commit hashes), and a guide to a
+  first pull request.
+- CI checks `requirements-lock.txt` on Python 3.11 and 3.12. A dry-run install with every extra must
+  resolve, and `scripts/check_lock.py` fails on any package the install would add without a pin.
+- A `docker` workflow builds the API + UI image, starts it with a plain `docker run`, and checks
+  `/health`, the UI and that auth is on. It runs when the Dockerfile, `pyproject.toml`, the lock or
+  `ui/package*.json` change, and weekly.
+- CI runs the Playwright smoke test on Node 24 and 26 (the API on the fixture repository with the offline
+  LLM), so dependency upgrades that break the dev server or the browser fail CI.
+
 ### Changed
 
-- The web UI needs Node 24 or newer (`engines` in `ui/package.json`). CI tests the UI on Node 24 and 26,
-  and the Docker build stage uses Node 26 (the current LTS).
+- **The web UI needs Node 24 or newer** (`engines` in `ui/package.json`). CI tests the UI on Node 24 and
+  26, and the Docker build stage uses Node 26 (the current LTS).
 - UI toolchain: Vite 6.4.6 → 8.3.7, Vitest 2 → 5.1.0, `@vitejs/plugin-react` 4.7.0 → 6.3.0 and Playwright
   1.61.1 → 1.65.0, with no config changes. `npm audit` now reports 0 vulnerabilities: the six
   advisories left in 1.0.0 were all inside Vitest 2's own dependencies (an old Vite 5 and esbuild).
 - The Vitest workers run with `--no-experimental-webstorage`: Node 25+ defines its own `localStorage`
   global, which hides jsdom's in tests.
-- CI runs the Playwright smoke test on Node 24 and 26 (the API on the fixture repository with the offline
-  LLM), so dependency upgrades that break the dev server or the browser fail CI.
 - The Docker image runs Python 3.12 (was 3.11). `requirements-lock.txt` is resolved on 3.12: the same
-  pins plus `setuptools`, which torch needs on Python 3.12+. Dependabot no longer proposes newer Python
-  base images.
-- Dependabot ignores updates that cannot be used yet: python-dateutil 3 and uuid-utils 1 (botocore and
-  langsmith require older majors), mpmath 1.4 (sympy, via torch, requires <1.4) and TypeScript 7 (deferred).
-- Dependabot runs monthly instead of weekly, with minor and patch updates grouped per ecosystem.
-- CI checks `requirements-lock.txt` on Python 3.11 and 3.12: a dry-run install with every extra must
-  resolve, and `scripts/check_lock.py` fails on any package the install would add without a pin.
-- A `docker` workflow builds the API + UI image and checks that it starts (`/health`, the UI, auth on). It
-  runs when the Dockerfile, `pyproject.toml`, the lock or `ui/package*.json` change, and weekly.
-- The build needs hatchling 1.33 or newer (was 1.21).
+  pins plus `setuptools`, which torch needs on Python 3.12+.
+- The build needs hatchling 1.33 or newer (was 1.21). Other updates: GitHub Actions (`checkout` 7,
+  `setup-python` 7, `setup-node` 7, `setup-terraform` 4) and the testing-library packages.
+- Dependabot runs monthly instead of weekly, with minor and patch updates grouped per ecosystem. It ignores
+  updates that cannot be used yet:
+  - python-dateutil 3 and uuid-utils 1 (botocore and langsmith require older majors)
+  - mpmath 1.4 (sympy, via torch, requires <1.4)
+  - Python base images newer than 3.12
+  - TypeScript 7 (deferred)
+- Answer quality is described as "not run" instead of "pending" in the README and `docs/evaluation.md`.
 
 ### Fixed
 
-- The Docker image now starts with a plain `docker run`. Its default index directory was `.codeatlas`
+- **The Docker image now starts with a plain `docker run`.** Its default index directory was `.codeatlas`
   under `/app`, which the non-root user cannot write, so it exited with "Permission denied" unless
   `CODEATLAS_INDEX_DIR` was set (docker compose sets it). The image now defaults to `/data/index` and
-  declares `/data` as a volume owned by the app user. The `docker` CI job starts it without any index
-  settings, so this cannot regress.
+  declares `/data` as a volume owned by the app user.
+- The lock-check command in CONTRIBUTING had a broken line continuation.
 
 ## [1.0.0] - 2026-11-14
 
@@ -131,5 +153,6 @@ First public release.
 - On CPU, the `quality` setup takes about 20–30 s per question.
 - Answer-quality (LLM-judge) results are pending the review of the reference answers.
 
-[Unreleased]: https://github.com/aakashsiwach/codeatlas-rag/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/aakashsiwach/codeatlas-rag/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/aakashsiwach/codeatlas-rag/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/aakashsiwach/codeatlas-rag/releases/tag/v1.0.0

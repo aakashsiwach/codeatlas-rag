@@ -24,6 +24,24 @@ Every answer cites the code blocks it used. When retrieval finds nothing relevan
 *"I don't know based on the indexed code."* and shows the closest matches. Each retrieval technique is
 measured against an evaluation set with a held-out test split.
 
+## Project status
+
+CodeAtlas is **feature-complete** and **maintained on a best-effort basis**. Issues and pull requests are
+welcome; see [Contributing](#contributing) and the open work in [ROADMAP.md](ROADMAP.md).
+
+Two parts of the original plan were **not run**:
+
+- **Answer-quality evaluation** (LLM-judged faithfulness, citation precision and refusal accuracy). The
+  64 reference answers have not been reviewed, and no judged run was made. The harness is ready:
+  [`scripts/run-judge.ps1`](scripts/run-judge.ps1) / [`scripts/run-judge.sh`](scripts/run-judge.sh) refuse
+  unreviewed references, estimate the cost against a budget and ask before spending.
+- **A live AWS deployment.** The [Terraform](infra/terraform) for ECS Fargate behind CloudFront passes
+  `terraform validate` in CI but has never been applied. [docs/deploy.md](docs/deploy.md) walks through a
+  short demo session and its teardown.
+
+Both are ready for anyone with model access (Amazon Bedrock, the Anthropic API or a local Ollama model).
+Every number in this README is a retrieval measurement from a committed report.
+
 ## How it works
 
 ```mermaid
@@ -424,9 +442,9 @@ only.
   and was replaced by ModernBERT.
 - **Quality costs about 1,000× the latency** of fast on CPU (32.7 s vs 35 ms p50 on test).
 
-**Answer quality** (quality setup, mean of 2-3 judged runs): pending.
+**Answer quality** (quality setup, mean of 2-3 judged runs): not run (see [Project status](#project-status)).
 
-**Failure analysis:** pending, with the judged runs.
+**Failure analysis:** not run; it comes with the judged runs.
 
 ## HTTP API
 
@@ -554,20 +572,17 @@ the fixture repository in `tests/fixtures/shop`.
 
 ## Roadmap
 
-- **Answer-quality results:** LLM-judged faithfulness, citation precision and refusal accuracy on the test
-  split, once the reference answers are reviewed ([scripts/run-judge.ps1](scripts/run-judge.ps1)).
-- **Retrieval fixes from the review backlog.** Each changes retrieval, so it needs a new dev cycle and a new
-  frozen split:
-  - request mappings that use constants (`@GetMapping(Paths.OWNER)`)
-  - one graph node per overload
-  - implementations in the impact of an interface method
-  - rerank confidence computed after test code is demoted
-- **Graph report order:** list main-code dependents before test code. Today the report is sorted by
-  package, so a test class can come first.
-- **A faster quality setup:** a GPU, or a lighter reranker, measured on a new split.
-- **Cross-service evaluation** (Feign clients) on spring-petclinic-microservices.
-- **Integrations:** OpenTelemetry / Langfuse trace export, a Neo4j backend for very large graphs, and
-  Kotlin support.
+Open work, each item labelled *good first issue*, *help wanted* or *advanced*, is in
+[ROADMAP.md](ROADMAP.md). The main items: judged answer-quality runs on a real model, the four deferred
+retrieval fixes from the review, graph reports ordered by relevance, a faster quality setup, a
+cross-service (Feign) evaluation set and a larger evaluation set.
+
+## Contributing
+
+Contributions are welcome: bug reports, evaluation questions, fixes and the roadmap items above.
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the setup, the checks CI runs, the evaluation rules (tune on dev,
+never edit the test split to improve numbers) and how a first pull request works. Security problems go
+through private reporting ([SECURITY.md](SECURITY.md)).
 
 ## License
 

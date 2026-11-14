@@ -133,7 +133,9 @@ threshold that best separates answerable from unanswerable dev questions (balanc
 
 They rest on only 7 unanswerable dev questions. See the README's Limitations.
 
-## Answer quality (pending)
+## Answer quality (not run)
+
+No judged run has been made: the reference answers are not reviewed yet.
 
 LLM-judged faithfulness, citation precision and refusal accuracy for the `quality` setup on the test split
 are measured with `scripts/run-judge.ps1` / `scripts/run-judge.sh`. These scripts:

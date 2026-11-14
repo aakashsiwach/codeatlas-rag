@@ -25,6 +25,8 @@ All notable changes to this project are documented here. The format follows
 - Dependabot runs monthly instead of weekly, with minor and patch updates grouped per ecosystem.
 - CI checks `requirements-lock.txt` on Python 3.11 and 3.12: a dry-run install with every extra must
   resolve, and `scripts/check_lock.py` fails on any package the install would add without a pin.
+- A `docker` workflow builds the API + UI image and checks that it starts (`/health`, the UI, auth on). It
+  runs when the Dockerfile, `pyproject.toml`, the lock or `ui/package*.json` change, and weekly.
 
 ## [1.0.0] - 2026-11-14
 

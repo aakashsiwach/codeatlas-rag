@@ -1,0 +1,49 @@
+name: docker
+
+# Builds the API + UI image (the `app` target; the `deploy` target also bakes in the index and both models)
+# and checks that it starts. Runs when the image's inputs change, and weekly, because a base image or an
+# unpinned build dependency can break the build without a commit here.
+on:
+  pull_request:
+    paths:
+      - Dockerfile
+      - pyproject.toml
+      - requirements-lock.txt
+      - ui/package.json
+      - ui/package-lock.json
+      - .github/workflows/docker.yml
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - pyproject.toml
+      - requirements-lock.txt
+      - ui/package.json
+      - ui/package-lock.json
+      - .github/workflows/docker.yml
+  schedule:
+    - cron: "0 5 * * 1" # Mondays 05:00 UTC
+  workflow_dispatch:
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build the app image
+        run: docker build --target app -t codeatlas:ci .
+      - name: Start it and check /health
+        run: |
+          docker run -d --name codeatlas -p 127.0.0.1:8000:8000 \
+            -e CODEATLAS_INDEX_DIR=/data/index -e CODEATLAS_API_TOKEN=ci-only-token \n            -e CODEATLAS_LLM_PROVIDER=fake codeatlas:ci   # the same index dir as docker-compose.yml
+          for i in $(seq 1 90); do   # up to 3 minutes; it loads the embedding model at start-up
+            if curl -sf http://127.0.0.1:8000/health; then echo; break; fi
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:8000/health
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/)" = 200   # the built UI
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/api/config)" = 401   # auth is on
+      - name: Container logs
+        if: ${{ always() }}
+        run: docker logs codeatlas || true

@@ -308,12 +308,29 @@ codeatlas doctor --llm                                         # ONE 1-token cal
 codeatlas ask "How does searching for owners by last name work?"
 ```
 
-Without Entra ID, set the `AZURE_OPENAI_API_KEY` environment variable instead. CodeAtlas reads it from the
-process environment, not from `.env`, and CodeAtlas uses it only when no Entra token can be obtained
-(`CODEATLAS_AZURE_OPENAI_AUTH=key` forces it). The API version defaults to `2024-10-21`
-(`CODEATLAS_AZURE_OPENAI_API_VERSION`). Prices are keyed by deployment:
-`{"azure_openai:<deployment name>": {...}}`. A prompt or answer blocked by Azure's content filter fails with
-the error kind `content_filter`, naming the filtered categories.
+Authentication is configurable with `CODEATLAS_AZURE_OPENAI_AUTH`:
+
+- `auto` (default): try Microsoft Entra ID first; if no Entra token can be obtained and
+  `AZURE_OPENAI_API_KEY` is present, fall back to that key.
+- `entra`: require Microsoft Entra ID. This is the mode used by the Azure Container Apps deployment,
+  with its user-assigned managed identity.
+- `key`: require `AZURE_OPENAI_API_KEY` and use key authentication.
+
+The API key is read from the process environment, not from the repository's `.env` file. The API version
+defaults to `2024-10-21` (`CODEATLAS_AZURE_OPENAI_API_VERSION`). Prices are keyed by deployment:
+`{"azure_openai:<deployment name>": {...}}`. A prompt or answer blocked by Azure's content filter fails
+with the error kind `content_filter`, naming the filtered categories.
+
+**Azure deployment implementation.** The Bicep template in `infra/azure` provisions an Azure Container
+Apps environment and app, Azure Container Registry, Log Analytics workspace, Key Vault, and a
+user-assigned managed identity. It assigns the identity the minimum documented roles for image pull,
+secret read, and Azure OpenAI inference. The app uses HTTPS ingress, health probes, scale-to-zero by
+default, and the Key Vault API-token secret reference. A $10 monthly resource-group budget sends
+80%-actual and 100%-forecast notifications; it is an alert, not a hard spending cap, and Azure OpenAI
+charges in a separate resource group are outside that budget. The template is Bicep-built/linted in CI,
+but has **not** been deployed to a live subscription. The provider tests use mocked HTTP responses from
+the official SDK; no live Azure OpenAI call has been made. See [the Azure deployment guide](docs/deploy-azure.md)
+for prerequisites, deployment, smoke tests, estimated costs, and teardown.
 
 ### Docker
 

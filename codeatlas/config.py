@@ -74,9 +74,11 @@ class Settings(BaseSettings):
     reranker_model: str = "Alibaba-NLP/gte-reranker-modernbert-base"
 
     # == Generation ==
-    # anthropic | openai (also OpenAI-compatible servers such as Ollama) | bedrock | fake (offline) | none.
+    # anthropic | openai (also OpenAI-compatible servers such as Ollama) | bedrock | azure_openai | fake (offline)
+    # | none.
     llm_provider: str = "anthropic"
     # Model id for the provider (Bedrock: the inference profile id). The fake provider defaults to "offline".
+    # Not used by azure_openai, which takes the deployment name instead.
     llm_model: str | None = None
     # Base URL for OpenAI-compatible servers (vLLM, Ollama, LM Studio).
     llm_base_url: str | None = None
@@ -95,6 +97,17 @@ class Settings(BaseSettings):
     aws_region: str | None = None
     # Named profile from ~/.aws for Bedrock. Unset uses the SDK default chain (AWS_PROFILE, then default).
     aws_profile: str | None = None
+    # Azure OpenAI resource endpoint, e.g. `https://<resource>.openai.azure.com` (provider azure_openai).
+    azure_openai_endpoint: str | None = None
+    # Azure OpenAI deployment name (provider azure_openai). It is the model id for prices
+    # (`azure_openai:<deployment>`) and for thinking_by_model.
+    azure_openai_deployment: str | None = None
+    # Azure OpenAI data-plane API version (provider azure_openai).
+    azure_openai_api_version: str = "2024-10-21"
+    # Azure OpenAI authentication: auto (Microsoft Entra ID through DefaultAzureCredential, so a managed identity
+    # or `az login`; falls back to the AZURE_OPENAI_API_KEY environment variable if no token can be obtained)
+    # | entra (Entra ID only) | key (AZURE_OPENAI_API_KEY only).
+    azure_openai_auth: str = "auto"
     # Thinking type sent with LLM-judge calls so reasoning cannot eat the judge's small output budget.
     # "disabled" works for most models; some newer ones reject it and turn thinking off with another
     # value (check the provider docs). Empty string sends nothing and keeps the model default.

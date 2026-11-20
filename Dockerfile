@@ -27,7 +27,7 @@ WORKDIR /app
 COPY pyproject.toml README.md LICENSE requirements-lock.txt ./
 COPY codeatlas ./codeatlas
 
-ARG EXTRAS=local,anthropic,openai,bedrock
+ARG EXTRAS=local,anthropic,openai,bedrock,azure
 # CPU-only torch keeps the image small; sentence-transformers runs fine on CPU for this workload.
 # Pinned by requirements-lock.txt (constraints: versions only).
 RUN pip install --extra-index-url https://download.pytorch.org/whl/cpu -c requirements-lock.txt ".[${EXTRAS}]"

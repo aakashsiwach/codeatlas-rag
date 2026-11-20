@@ -6,7 +6,8 @@ working directory (`.env.example` is a starting point). Lists and dicts are JSON
 win over `.env`.
 
 Provider credentials are not CodeAtlas settings: they come from each SDK's standard sources
-(`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `~/.aws` profiles), never from files in the repository.
+(`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `~/.aws` profiles, Microsoft Entra ID through `az login` or a managed
+identity, or `AZURE_OPENAI_API_KEY`), never from files in the repository.
 
 This page is generated from `codeatlas/config.py` by `scripts/gen_config_docs.py`. Do not edit it by hand.
 
@@ -50,8 +51,8 @@ This page is generated from `codeatlas/config.py` by `scripts/gen_config_docs.py
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `CODEATLAS_LLM_PROVIDER` | `"anthropic"` | anthropic \| openai (also OpenAI-compatible servers such as Ollama) \| bedrock \| fake (offline) \| none. |
-| `CODEATLAS_LLM_MODEL` | unset | Model id for the provider (Bedrock: the inference profile id). The fake provider defaults to "offline". |
+| `CODEATLAS_LLM_PROVIDER` | `"anthropic"` | anthropic \| openai (also OpenAI-compatible servers such as Ollama) \| bedrock \| azure_openai \| fake (offline) \| none. |
+| `CODEATLAS_LLM_MODEL` | unset | Model id for the provider (Bedrock: the inference profile id). The fake provider defaults to "offline". Not used by azure_openai, which takes the deployment name instead. |
 | `CODEATLAS_LLM_BASE_URL` | unset | Base URL for OpenAI-compatible servers (vLLM, Ollama, LM Studio). |
 | `CODEATLAS_LLM_MAX_TOKENS` | `1200` | Output token limit per answer. |
 | `CODEATLAS_LLM_TIMEOUT_S` | `120.0` | Timeout per LLM request, in seconds. |
@@ -59,6 +60,10 @@ This page is generated from `codeatlas/config.py` by `scripts/gen_config_docs.py
 | `CODEATLAS_LLM_PRICES` | `{}` | USD prices per million tokens, keyed by "<provider>:<model>" so the same model on Bedrock and on the Anthropic API are separate entries. JSON, e.g. {"bedrock:<model id>": {"input_per_mtok": <usd>, "output_per_mtok": <usd>}}. There are no built-in prices: a model without an entry is reported as "unpriced", never as $0. |
 | `CODEATLAS_AWS_REGION` | unset | AWS region for Bedrock. Unset uses the SDK default. |
 | `CODEATLAS_AWS_PROFILE` | unset | Named profile from ~/.aws for Bedrock. Unset uses the SDK default chain (AWS_PROFILE, then default). |
+| `CODEATLAS_AZURE_OPENAI_ENDPOINT` | unset | Azure OpenAI resource endpoint, e.g. `https://<resource>.openai.azure.com` (provider azure_openai). |
+| `CODEATLAS_AZURE_OPENAI_DEPLOYMENT` | unset | Azure OpenAI deployment name (provider azure_openai). It is the model id for prices (`azure_openai:<deployment>`) and for thinking_by_model. |
+| `CODEATLAS_AZURE_OPENAI_API_VERSION` | `"2024-10-21"` | Azure OpenAI data-plane API version (provider azure_openai). |
+| `CODEATLAS_AZURE_OPENAI_AUTH` | `"auto"` | Azure OpenAI authentication: auto (Microsoft Entra ID through DefaultAzureCredential, so a managed identity or `az login`; falls back to the AZURE_OPENAI_API_KEY environment variable if no token can be obtained) \| entra (Entra ID only) \| key (AZURE_OPENAI_API_KEY only). |
 | `CODEATLAS_JUDGE_THINKING` | `"disabled"` | Thinking type sent with LLM-judge calls so reasoning cannot eat the judge's small output budget. "disabled" works for most models; some newer ones reject it and turn thinking off with another value (check the provider docs). Empty string sends nothing and keeps the model default. |
 | `CODEATLAS_ANSWER_THINKING` | `""` | Thinking type for answer generation. Empty keeps the model default; thinking tokens count against llm_max_tokens, so a long think can truncate the visible answer (reported as `truncated`). |
 | `CODEATLAS_THINKING_BY_MODEL` | `{}` | Per-model overrides, as JSON: {"<model id>": {"answer": "<type>", "judge": "<type>"}}. They win over answer_thinking / judge_thinking for that model, since valid values differ between models. |

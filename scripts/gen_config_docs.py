@@ -25,7 +25,8 @@ working directory (`.env.example` is a starting point). Lists and dicts are JSON
 win over `.env`.
 
 Provider credentials are not CodeAtlas settings: they come from each SDK's standard sources
-(`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `~/.aws` profiles), never from files in the repository.
+(`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `~/.aws` profiles, Microsoft Entra ID through `az login` or a managed
+identity, or `AZURE_OPENAI_API_KEY`), never from files in the repository.
 
 This page is generated from `codeatlas/config.py` by `scripts/gen_config_docs.py`. Do not edit it by hand.
 """

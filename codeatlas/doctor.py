@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from codeatlas.config import Settings
-from codeatlas.llm import LLM, LLMError, LLMNotConfiguredError, build_llm, price_key, thinking_for
+from codeatlas.llm import LLM, LLMError, LLMNotConfiguredError, build_llm, model_id, price_key, thinking_for
 
 OK, WARN, FAIL = "ok", "warn", "fail"
 
@@ -110,7 +110,37 @@ def auth_source(settings: Settings) -> dict[str, Any]:
     if provider == "openai":
         return {"auth": "OPENAI_API_KEY (set)" if os.environ.get("OPENAI_API_KEY") else "OPENAI_API_KEY not set",
                 "base_url": settings.llm_base_url}
+    if provider == "azure_openai":
+        return _azure_auth_source(settings)
     return {}
+
+
+def _azure_auth_source(settings: Settings) -> dict[str, Any]:
+    """Which Azure OpenAI auth would be tried, without fetching a token. Never the key or tenant ids."""
+    from urllib.parse import urlparse
+
+    key = bool(os.environ.get("AZURE_OPENAI_API_KEY"))
+    try:
+        import azure.identity  # noqa: F401
+        identity = True
+    except ImportError:
+        identity = False
+    mode = settings.azure_openai_auth.lower()
+    entra = "Entra ID (DefaultAzureCredential)" if identity else None
+    if mode == "key":
+        auth = "AZURE_OPENAI_API_KEY (set)" if key else "none found"
+    elif mode == "entra":
+        auth = entra or "none found (pip install 'codeatlas[azure]')"
+    else:
+        options = [o for o in (entra, "AZURE_OPENAI_API_KEY (set)" if key else None) if o]
+        auth = ", else ".join(options) if options else "none found"
+    endpoint = settings.azure_openai_endpoint
+    return {
+        "endpoint": urlparse(endpoint).netloc or endpoint if endpoint else None,
+        "api_version": settings.azure_openai_api_version,
+        "auth_mode": mode,
+        "auth": auth,
+    }
 
 
 def check_llm_config(settings: Settings) -> Check:
@@ -119,17 +149,21 @@ def check_llm_config(settings: Settings) -> Check:
     if settings.llm_provider.lower() == "fake":  # needs no model id, key or network
         model = settings.llm_model or "offline"
         return Check("llm config", OK, f"fake:{model}: offline stand-in, cites retrieved blocks, calls no model")
-    if not settings.llm_model:
-        return Check("llm config", FAIL, "CODEATLAS_LLM_MODEL is not set")
+    azure = settings.llm_provider.lower() == "azure_openai"
+    if not model_id(settings):
+        missing = "CODEATLAS_AZURE_OPENAI_DEPLOYMENT" if azure else "CODEATLAS_LLM_MODEL"
+        return Check("llm config", FAIL, f"{missing} is not set")
+    if azure and not settings.azure_openai_endpoint:
+        return Check("llm config", FAIL, "CODEATLAS_AZURE_OPENAI_ENDPOINT is not set")
     info = auth_source(settings)
     priced = "priced" if settings.llm_prices.get(price_key(settings)) else "unpriced (set CODEATLAS_LLM_PRICES)"
-    parts = [f"{settings.llm_provider}:{settings.llm_model}", *(f"{k}={v}" for k, v in info.items() if v is not None)]
+    parts = [price_key(settings), *(f"{k}={v}" for k, v in info.items() if v is not None)]
     parts += [
         f"answer thinking={thinking_for(settings, 'answer') or 'model default'}",
         f"judge thinking={thinking_for(settings, 'judge') or 'model default'}",
         priced,
     ]
-    status = FAIL if info.get("auth") == "none found" else (OK if priced == "priced" else WARN)
+    status = FAIL if str(info.get("auth", "")).startswith("none found") else (OK if priced == "priced" else WARN)
     return Check("llm config", status, ", ".join(parts))
 
 
@@ -145,11 +179,12 @@ def check_llm_call(settings: Settings, llm: LLM | None = None) -> Check:
     except LLMError as exc:
         return Check("llm call", FAIL, f"{llm.name}: {exc.error_class} ({exc.kind}): {exc.message}")
     secs = time.perf_counter() - start
+    auth = f", auth={llm.auth}" if getattr(llm, "auth", None) else ""  # Azure OpenAI: which auth path was used
     return Check(
         "llm call",
         OK,
         f"{llm.name}: stop_reason={resp.stop_reason}, tokens {resp.usage.input_tokens}+{resp.usage.output_tokens}, "
-        f"{secs:.1f}s",
+        f"{secs:.1f}s{auth}",
     )
 
 

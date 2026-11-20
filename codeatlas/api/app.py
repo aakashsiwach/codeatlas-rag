@@ -25,7 +25,7 @@ from codeatlas.atlas import CodeAtlas
 from codeatlas.config import Settings
 from codeatlas.ingest.text import split_lines
 from codeatlas.ingest.walker import classify
-from codeatlas.llm import LLMError, LLMNotConfiguredError
+from codeatlas.llm import LLMError, LLMNotConfiguredError, model_id
 
 log = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ def llm_label(settings: Settings) -> str | None:
     provider = settings.llm_provider.lower()
     if provider == "none":
         return None
-    model = settings.llm_model or ("offline" if provider == "fake" else "(model not set)")
+    model = model_id(settings) or ("offline" if provider == "fake" else "(model not set)")
     return f"{provider}:{model}"
 
 

@@ -20,8 +20,10 @@ jobs:
           cache-dependency-path: |
             pyproject.toml
             requirements-lock.txt
+      # The azure extra (openai + azure-identity) lets the Azure OpenAI provider tests run against the real SDK
+      # over a mocked HTTP transport; they are skipped where it is not installed.
       - name: Install
-        run: pip install -c requirements-lock.txt -e ".[dev]" pytest-github-actions-annotate-failures
+        run: pip install -c requirements-lock.txt -e ".[dev,azure]" pytest-github-actions-annotate-failures
       - name: Lint
         run: ruff check --output-format=github .
       - name: Makefile targets parse

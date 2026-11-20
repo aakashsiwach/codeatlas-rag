@@ -6,6 +6,57 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-20
+
+Azure support, mirroring the AWS work: an Azure OpenAI provider and infrastructure for Azure Container
+Apps. The template is validated in CI but has **not been deployed**, and the provider has been tested
+against mocked HTTP responses only, not a live Azure OpenAI deployment. Retrieval, the evaluation sets, the
+frozen setups and the README's numbers are unchanged.
+
+### Added
+
+- **Azure OpenAI provider** (`CODEATLAS_LLM_PROVIDER=azure_openai`), through the `openai` SDK's
+  `AzureOpenAI` client:
+  - settings: `CODEATLAS_AZURE_OPENAI_ENDPOINT`, `CODEATLAS_AZURE_OPENAI_DEPLOYMENT` (the deployment
+    name, used instead of `CODEATLAS_LLM_MODEL`) and `CODEATLAS_AZURE_OPENAI_API_VERSION` (default
+    `2024-10-21`)
+  - auth: Microsoft Entra ID first (`DefaultAzureCredential`: a managed identity in Azure, `az login`
+    locally), with the `AZURE_OPENAI_API_KEY` environment variable as a fallback when no token can be
+    obtained. `CODEATLAS_AZURE_OPENAI_AUTH=entra` or `key` forces one
+  - streaming; retries with backoff on throttling (429), honouring Azure's retry-after headers;
+    `max_completion_tokens`, with truncation reported as `max_tokens`
+  - a new error kind, `content_filter`, for prompts blocked or answers stopped by Azure's content
+    filter. It names the filtered categories, never the prompt
+  - prices keyed `azure_openai:<deployment>`
+  - `codeatlas doctor` shows the endpoint host, API version and auth path, never the key. `doctor --llm`
+    reports which auth was used
+- New `azure` extra (`openai`, `azure-identity`), included in `all` and in the Docker image.
+  `requirements-lock.txt` pins its 8 new packages.
+- **Azure Container Apps infrastructure** in Bicep (`infra/azure`), resource-group scoped:
+  - Log Analytics (with a daily ingestion cap)
+  - Azure Container Registry, without an admin user
+  - a Container Apps environment and one Container App: the existing image, the `fast` setup by default,
+    HTTPS-only ingress, scale to zero allowed
+  - a user-assigned managed identity with AcrPull, Key Vault Secrets User (on the one secret) and
+    Cognitive Services OpenAI User (on an existing Azure OpenAI resource passed as a parameter)
+  - Key Vault holding the API token, referenced as a Container App secret
+  - a $10 monthly Consumption budget alert
+
+  The token is a secure parameter read from an environment variable, so no secret is in a tracked file.
+- `docs/deploy-azure.md`: the `az` commands to deploy, smoke test, read logs and tear down; how the ingress
+  treats long requests; and cost estimates for a 3-hour demo and for running 24/7.
+- CI: an `infra-azure` job that builds and lints the Bicep with a pinned Bicep CLI (every linter rule an
+  error, any diagnostic fails). The test job installs the `azure` extra, so the 30 provider tests run
+  against the real SDK over a mocked transport.
+
+### Changed
+
+- Provider errors from the `openai` SDK now carry the API's own error message instead of the full
+  response dump.
+- UI test dependencies: jsdom 25.0.1 → 31.0.0, TypeScript 5.6.3 → 5.9.3 (Dependabot).
+- README: the Project status, providers, configuration and documentation tables cover Azure. The
+  architecture doc covers both clouds, and the troubleshooting doc covers Azure's errors.
+
 ## [1.1.0] - 2026-11-14
 
 The final planned release: CodeAtlas is feature-complete and maintained on a best-effort basis. This release
@@ -153,6 +204,7 @@ First public release.
 - On CPU, the `quality` setup takes about 20–30 s per question.
 - Answer-quality (LLM-judge) results are pending the review of the reference answers.
 
-[Unreleased]: https://github.com/aakashsiwach/codeatlas-rag/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/aakashsiwach/codeatlas-rag/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/aakashsiwach/codeatlas-rag/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/aakashsiwach/codeatlas-rag/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/aakashsiwach/codeatlas-rag/releases/tag/v1.0.0

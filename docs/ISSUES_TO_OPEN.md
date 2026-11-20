@@ -298,3 +298,35 @@ for comparison.
 - [ ] At least 100 questions in total, with every category represented by at least 5 test questions.
 - [ ] The new split is committed before any test run, and its commit is named in the results.
 - [ ] Baseline, `fast` and `quality` are reported on the new split, from committed reports.
+
+---
+
+## 11. A live Azure deploy session
+
+**Title:** Deploy to Azure Container Apps once, smoke test it, and tear it down
+**Labels:** `help wanted`
+
+### Context
+
+`infra/azure` (Bicep) runs CodeAtlas on Azure Container Apps with an existing Azure OpenAI deployment, a
+managed identity and Key Vault. CI builds and lints it, but it has never been deployed. The Azure OpenAI
+provider is tested only against mocked HTTP responses. `docs/deploy-azure.md` describes the session and
+estimates the cost.
+
+### What to do
+
+1. Follow `docs/deploy-azure.md` with `MIN_REPLICAS=1`.
+2. Smoke test:
+   - `/health`
+   - the UI
+   - `/api/config` returns 401 without the token
+   - `/api/stats` shows 327 chunks
+   - one `fast` question returns an answer with sources
+3. Take screenshots, then run the teardown and check that `az group exists` returns `false`.
+
+### Acceptance criteria
+
+- [ ] The session stays within 90 minutes and $5. The actual cost is reported from Cost Management.
+- [ ] Screenshots committed under `docs/screenshots/`.
+- [ ] Fixes for anything in the template or the guide that did not work as written.
+- [ ] The README's Project status says when it was deployed and torn down.

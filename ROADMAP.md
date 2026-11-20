@@ -24,6 +24,7 @@ split, because the current test split has already been seen.
 | 8 | [A cross-service (Feign) evaluation set](#8-a-cross-service-feign-evaluation-set) | advanced | evaluation |
 | 9 | [A faster quality setup](#9-a-faster-quality-setup) | advanced | retrieval |
 | 10 | [A larger evaluation set](#10-a-larger-evaluation-set) | help wanted | evaluation |
+| 11 | [A live Azure deploy session](#11-a-live-azure-deploy-session) | help wanted | infrastructure |
 
 ## 1. Judged answer-quality runs on a real model
 
@@ -87,6 +88,21 @@ numbers.
 The test split has 24 questions (1–5 per category), so one question moves hit@5 by 0.05. Grow the set,
 ideally with a second Spring Boot repository, and freeze a new, larger held-out split. Keep the old split
 and its numbers for comparison.
+
+## 11. A live Azure deploy session
+
+The Bicep for Azure Container Apps (`infra/azure`) compiles and passes the linter in CI, but it has never
+been deployed. The Azure OpenAI provider has never called a live deployment. Its tests use mocked HTTP
+responses. Run one demo session as in [docs/deploy-azure.md](docs/deploy-azure.md), within its time and
+cost budget:
+- deploy
+- smoke test: health, the UI, the token-protected API, one `fast` question with sources, and 327 chunks in
+  `/api/stats`
+- take screenshots
+- `az group delete`, and confirm the resource group is gone
+
+Then record the date and the actual cost in the README, and fix anything in the template or the guide that
+did not work as written. Needs an Azure subscription with an Azure OpenAI deployment.
 
 ## Ideas (no issue yet)
 

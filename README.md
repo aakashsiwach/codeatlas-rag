@@ -42,20 +42,18 @@ Two parts of the original plan were **not run**:
 Both are ready for anyone with model access (Amazon Bedrock, the Anthropic API or a local Ollama model).
 Every number in this README is a retrieval measurement from a committed report.
 
-
-
 ## What the name means
 
 **CodeAtlas** combines two ideas:
 
-- **Code** is the source material: application code, tests, documentation and configuration that make up a software repository.
-- **Atlas** is a structured map of that repository. Like a geographic atlas helps you locate places and understand how they relate, CodeAtlas helps developers locate symbols, follow call paths and understand dependencies across a codebase.
+- **Code** is the source material: application code, tests, documentation and configuration in a software repository.
+- **Atlas** is a structured map. Like a geographic atlas helps you locate places and understand their relationships, CodeAtlas helps developers locate symbols, follow call paths and understand dependencies across a codebase.
 
-Together, the name describes the project's purpose: build a navigable, searchable map of a codebase so developers can ask questions about *where behaviour lives*, *how components connect* and *what may be affected by a change*.
+Together, the name describes the project's purpose: build a navigable, searchable map of a codebase so developers can ask *where behaviour lives*, *how components connect* and *what may be affected by a change*.
 
 ## Who CodeAtlas is for
 
-CodeAtlas is intended for developers and engineering teams working with Java and Spring Boot repositories who need more than filename search. It is especially useful when:
+CodeAtlas is intended for developers and engineering teams working with Java and Spring Boot repositories who need more than filename search. It is useful when:
 
 - onboarding to an unfamiliar or legacy service;
 - tracing a request from an HTTP endpoint through controllers and services;
@@ -63,10 +61,9 @@ CodeAtlas is intended for developers and engineering teams working with Java and
 - finding relevant documentation and configuration alongside source code; or
 - exploring a repository with grounded answers and clickable source citations.
 
-It is a developer-assistance and code-understanding tool, not a replacement for tests, static analysis, code review or an engineer's judgement. Its graph is static and its retrieval can miss relationships that are created dynamically; see [Limitations](#limitations).
+CodeAtlas is a developer-assistance and code-understanding tool, not a replacement for tests, static analysis, code review or engineering judgement. Its graph is static and retrieval can miss dynamically created relationships; see [Limitations](#limitations).
 
 ## How it works
-
 ```mermaid
 flowchart LR
     subgraph Ingestion

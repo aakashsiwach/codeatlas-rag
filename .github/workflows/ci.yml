@@ -121,6 +121,40 @@ jobs:
         working-directory: .
         run: docker build --check .
 
+  # Compiles and lints the Azure Container Apps template. No Azure login and no resources: `bicep build` and
+  # `lint` run offline. bicepconfig.json raises the linter rules to errors, and any other diagnostic (such as a
+  # property the resource type does not have) fails the job too.
+  infra-azure:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/azure
+    env:
+      BICEP_VERSION: v0.49.2
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Bicep (pinned)
+        run: |
+          az config set bicep.check_version=false bicep.use_binary_from_path=false
+          az bicep install --version "$BICEP_VERSION"
+          az bicep version
+      - name: Build
+        run: |
+          out=$(az bicep build --file main.bicep --stdout 2>&1 >/dev/null) || { echo "$out"; exit 1; }
+          if [ -n "$out" ]; then echo "$out"; exit 1; fi
+      - name: Lint
+        run: |
+          out=$(az bicep lint --file main.bicep 2>&1) || { echo "$out"; exit 1; }
+          if [ -n "$out" ]; then echo "$out"; exit 1; fi
+      - name: Build the parameters file (placeholder values, nothing real)
+        env:
+          CODEATLAS_API_TOKEN: ci-placeholder-token-not-a-secret-0000
+          BUDGET_ALERT_EMAIL: alerts@example.com
+          AZURE_OPENAI_NAME: example-openai
+          AZURE_OPENAI_RG: example-rg
+          AZURE_OPENAI_DEPLOYMENT: example-deployment
+        run: az bicep build-params --file main.bicepparam --stdout > /dev/null
+
   # Runs the README's macOS/Linux quickstart as written (offline fake LLM). Keep in sync with README.md.
   quickstart:
     runs-on: ubuntu-latest

@@ -49,6 +49,11 @@ forward slashes relative to the repository root, so use `src/main/java/…`, not
 | `validation` | `ValidationException`, `ResourceNotFoundException` | The request was rejected: a wrong model id, a parameter the model does not accept (for example a thinking type), or no access to the model |
 | `throttled` | `ThrottlingException`, `ServiceQuotaExceededException` | Too many requests or tokens per minute. CodeAtlas retries with backoff; lower the request rate or ask for a quota increase |
 | `unavailable` / `timeout` / `network` | `ServiceUnavailableException`, read timeouts | Transient. Retried automatically. Raise `CODEATLAS_LLM_TIMEOUT_S` for long answers |
+| `content_filter` | `BadRequestError` (code `content_filter`), `ContentFilterFinishReason` | Azure OpenAI's content filter blocked the prompt or stopped the answer. The message names the filtered categories. Rephrase, or review the filter configured on the deployment |
+
+Azure OpenAI reports the same kinds with the `openai` SDK's class names: `AuthenticationError` (401) and
+`PermissionDeniedError` (403) are `access`, `RateLimitError` (429) is `throttled`, and `NotFoundError`
+(404) is `validation`.
 
 **Bedrock: `ValidationException: Operation not allowed`, or "model is not available for this account".**
 The account cannot use the model yet. This happens to new accounts and to models that need a use-case form.
@@ -67,6 +72,23 @@ rerun the single check with `codeatlas judge-check` before any full judged run.
 **Cost shows "unpriced".** The model has no entry in `CODEATLAS_LLM_PRICES`. The key is
 `"<provider>:<model>"`, so Bedrock and the Anthropic API are separate entries. Judged runs refuse to start
 without a price, because the budget cannot be enforced.
+
+**Azure OpenAI: `PermissionDeniedError (access)` with Entra ID.** The identity (your `az login` user locally,
+the managed identity in Container Apps) needs the **Cognitive Services OpenAI User** role on the Azure OpenAI
+resource. Owner or Contributor is not enough, because those roles do not include calling the model. A new
+role assignment can take a few minutes to apply. `doctor --llm` prints `auth=` with the path it used.
+
+**Azure OpenAI: `CredentialUnavailableError (access)`.** No Entra ID credential was found. Run `az login`,
+set `AZURE_OPENAI_API_KEY` (in the process environment, not `.env`) for the key fallback, or check
+`AZURE_CLIENT_ID` when you use a user-assigned managed identity.
+
+**Azure OpenAI: `NotFoundError (validation)`, "DeploymentNotFound".** `CODEATLAS_AZURE_OPENAI_DEPLOYMENT` must
+be the deployment name, not the model name. `az cognitiveservices account deployment list` shows both. A
+deployment created a moment ago can also take a minute to become available.
+
+**Azure OpenAI: `BadRequestError (validation)` about `max_completion_tokens` or the API version.** The API
+version is too old for the model. Set a newer `CODEATLAS_AZURE_OPENAI_API_VERSION` from the Azure OpenAI API
+version lifecycle page.
 
 **Ollama answers are cut off or ignore the context.** Ollama's default context window can be smaller than
 CodeAtlas's prompt, and Ollama truncates it silently. Start Ollama with `OLLAMA_CONTEXT_LENGTH=8192`.

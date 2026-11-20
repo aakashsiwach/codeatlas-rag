@@ -98,9 +98,9 @@ evaluation sets:
 3. **Make the change** with a test, and update the docs and `CHANGELOG.md` under `[Unreleased]`.
 4. **Run the checks** above locally (`make check`, or `./tasks.ps1 check` on Windows).
 5. **Open a pull request** against `main` and fill in the template. CI runs the lint, the Python tests on
-   3.11 and 3.12, the lock check, the UI tests and the Playwright smoke test on Node 24 and 26, and
-   Terraform validation. Changes to the Dockerfile or the dependencies also build and start the Docker
-   image. **CI must be green** before a pull request is reviewed and merged.
+   3.11 and 3.12, the lock check, the UI tests and the Playwright smoke test on Node 24 and 26, Terraform
+   validation, and the Bicep build and lint (`infra-azure`). Changes to the Dockerfile or the dependencies
+   also build and start the Docker image. **CI must be green** before a pull request is reviewed and merged.
 6. **Review.** Expect questions and requested changes. Push new commits to the same branch rather than
    force-pushing, so the review history stays readable.
 

@@ -32,7 +32,7 @@ flowchart TB
         RET --> RR[reranker.py<br/>cross-encoder]
         RET --> GRAPH[graph.py<br/>NetworkX]
         ENG[answer.py<br/>prompt, citations, refusal] --> RET
-        ENG --> LLM[llm.py<br/>Anthropic / OpenAI / Bedrock / fake]
+        ENG --> LLM[llm.py<br/>Anthropic / OpenAI / Bedrock / Azure OpenAI / fake]
     end
     FACADE --> ENG
     SQL --> BM25
@@ -56,7 +56,7 @@ flowchart TB
 | `retrieval/reranker.py` | Cross-encoder rescoring (default `gte-reranker-modernbert-base`). |
 | `graph.py` | Builds a NetworkX graph from the stored facts: calls resolved through field and local-variable types, interface → implementation edges, type references, and endpoint callers. Answers "who depends on X" and writes a citable dependency report. |
 | `answer.py` | Builds the prompt with numbered `<block>` elements (escaped, treated as data), streams the answer, validates `[n]` citations, and refuses below the confidence threshold. |
-| `llm.py` | One small interface over the Anthropic API, OpenAI(-compatible), Bedrock (Converse API) and the offline `fake` provider. It handles typed errors, retries, timeouts, stop reasons, thinking settings and prices. |
+| `llm.py` | One small interface over the Anthropic API, OpenAI(-compatible), Bedrock (Converse API), Azure OpenAI (Entra ID first, API key as a fallback) and the offline `fake` provider. It handles typed errors (including Azure's content filter), retries, timeouts, stop reasons, thinking settings and prices. |
 | `eval/` | Evaluation sets, symbol-level scoring, the runner (recall@k, hit@k, MRR, latency, refusal, citations), the LLM judge and the judged-run helpers. |
 | `api/app.py` | FastAPI routes (see [api.md](api.md)), bearer-token middleware, SSE streaming with progress heartbeats, and the static UI. |
 | `doctor.py` | Environment checks: Python, the index and its lock, the models, and the LLM configuration (names only, never secrets). One optional 1-token LLM call. |
@@ -95,5 +95,13 @@ Two setups were frozen on the dev split and are the API/UI choices (`CODEATLAS_S
 ## Deployment
 
 One container serves the API and the built UI (`CODEATLAS_UI_DIR`). The `deploy` image target bakes in
-the PetClinic index and both models. `infra/terraform` runs it on ECS Fargate behind an ALB and CloudFront,
-with Bedrock for generation. See [deploy.md](deploy.md).
+the PetClinic index and both models. The same image has infrastructure for two clouds. Both are validated
+in CI, and neither has been deployed yet.
+
+| Cloud | Infrastructure | Compute and HTTPS | Generation | Secrets and identity | Guide |
+|---|---|---|---|---|---|
+| AWS | Terraform (`infra/terraform`) | ECS Fargate behind an ALB, CloudFront for HTTPS | Amazon Bedrock | SSM SecureString; IAM task role limited to the model | [deploy.md](deploy.md) |
+| Azure | Bicep (`infra/azure`) | Container Apps with HTTPS ingress, scale to zero | Azure OpenAI | Key Vault secret reference; user-assigned managed identity with AcrPull, Key Vault Secrets User and Cognitive Services OpenAI User | [deploy-azure.md](deploy-azure.md) |
+
+Both send `progress` events on the answer stream every 5 s, so proxy timeouts (CloudFront's 60 s first
+byte, the Container Apps ingress) do not cut off slow retrievals.

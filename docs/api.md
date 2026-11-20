@@ -63,7 +63,8 @@ The request body:
 | `trace_id` | The query's trace in `traces.jsonl` |
 
 LLM errors map to `503` when they are throttling, unavailable, timeout or network errors, and to `502`
-otherwise. The body carries `kind`, `error_class` and `provider`.
+otherwise (for example `access`, `validation`, or `content_filter` when Azure OpenAI's content filter blocks
+a prompt or an answer). The body carries `kind`, `error_class` and `provider`.
 
 ### Server-sent events (`/api/ask/stream`)
 

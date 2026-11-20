@@ -29,7 +29,7 @@ measured against an evaluation set with a held-out test split.
 CodeAtlas is **feature-complete** and **maintained on a best-effort basis**. Issues and pull requests are
 welcome; see [Contributing](#contributing) and the open work in [ROADMAP.md](ROADMAP.md).
 
-Two parts of the original plan were **not run**:
+These were **not run**:
 
 - **Answer-quality evaluation** (LLM-judged faithfulness, citation precision and refusal accuracy). The
   64 reference answers have not been reviewed, and no judged run was made. The harness is ready:
@@ -38,9 +38,14 @@ Two parts of the original plan were **not run**:
 - **A live AWS deployment.** The [Terraform](infra/terraform) for ECS Fargate behind CloudFront passes
   `terraform validate` in CI but has never been applied. [docs/deploy.md](docs/deploy.md) walks through a
   short demo session and its teardown.
+- **A live Azure deployment, and any call to Azure OpenAI.** The [Bicep template](infra/azure) for Azure
+  Container Apps compiles and passes the Bicep linter in CI (the `infra-azure` job) but has never been
+  deployed. The Azure OpenAI provider is tested only against mocked HTTP responses from the real `openai`
+  SDK client, not against a live deployment. [docs/deploy-azure.md](docs/deploy-azure.md) walks through a
+  demo session and its teardown.
 
-Both are ready for anyone with model access (Amazon Bedrock, the Anthropic API or a local Ollama model).
-Every number in this README is a retrieval measurement from a committed report.
+All of these are ready for anyone with model access (Amazon Bedrock, Azure OpenAI, the Anthropic API or a
+local Ollama model). Every number in this README is a retrieval measurement from a committed report.
 
 ## What the name means
 
@@ -143,7 +148,7 @@ records the files changed, the tokens embedded, the estimated cost and the durat
 | **Query rewriting** | Optional LLM rewrite of the question into identifier-rich search queries (multi-query + RRF). |
 | **Code graph** | NetworkX call/dependency graph: field-type and local-variable call resolution, interface → implementation dispatch, type references. Powers change-impact questions and caller/callee expansion. |
 | **Endpoint tracing** | Matches HTTP paths across `@*Mapping` controllers, `@FeignClient` interfaces and URL string literals (`RestTemplate`/`WebClient`). |
-| **Grounded generation** | Numbered context blocks, mandatory `[n]` citations, invalid-citation detection and an uncited-sentence count per answer. Works with the Anthropic API, OpenAI(-compatible, e.g. Ollama) or AWS Bedrock, plus an offline `fake` provider for demos and tests. |
+| **Grounded generation** | Numbered context blocks, mandatory `[n]` citations, invalid-citation detection and an uncited-sentence count per answer. Works with the Anthropic API, OpenAI(-compatible, e.g. Ollama), AWS Bedrock or Azure OpenAI (Entra ID or API key), plus an offline `fake` provider for demos and tests. |
 | **Incremental indexing** | Content-hash change detection; only changed files are re-chunked and re-embedded. A GitHub webhook re-indexes just the files a push touched. Each run logs files changed, tokens and estimated cost. |
 | **Evaluation** | YAML question sets with expected sources and a held-out test split. Reports recall@k, hit@k, MRR, latency and, optionally, refusal accuracy, citation precision and LLM-judged faithfulness. Compares configurations side by side. |
 | **Web UI** | Streaming chat with clickable citations, a source viewer, a "don't know" state and a per-question `fast` / `quality` switch. |
@@ -154,8 +159,9 @@ records the files changed, the tokens embedded, the estimated cost and the durat
 You need Python 3.11+ on PATH, Git, and Node 24 or newer for the web UI. The first `index` downloads the embedding model
 (~130 MB), and the first `quality` question downloads the reranker (~600 MB). The commands below make no
 paid calls: `CODEATLAS_LLM_PROVIDER=fake` is an offline stand-in that cites the retrieved blocks without
-calling a model. Swap it for [Ollama](#real-answers-with-ollama-local-free) or
-[Bedrock](#real-answers-with-amazon-bedrock) for real answers.
+calling a model. Swap it for [Ollama](#real-answers-with-ollama-local-free),
+[Bedrock](#real-answers-with-amazon-bedrock) or [Azure OpenAI](#real-answers-with-azure-openai) for real
+answers.
 
 **Fastest path.** After installing (first two steps of either block below), one command clones PetClinic
 at the evaluated revision if it is missing, indexes it, builds the UI and serves everything on
@@ -276,6 +282,39 @@ Set `CODEATLAS_LLM_PRICES` (see `.env.example`) so that answers and eval reports
 without a price shows "unpriced", never $0. The Anthropic API works the same way, with
 `CODEATLAS_LLM_PROVIDER=anthropic` and `ANTHROPIC_API_KEY`.
 
+### Real answers with Azure OpenAI
+
+You need an Azure OpenAI resource with a chat model deployment, and the **Cognitive Services OpenAI User**
+role on it for your account ([docs/deploy-azure.md](docs/deploy-azure.md), step 2, shows both). CodeAtlas
+signs in with Microsoft Entra ID first: `az login` on your machine, a managed identity in Azure. No key is
+needed. Like the Bedrock commands, these are not run by CI, because calls are billed. The provider's tests
+use mocked HTTP responses, and it has not yet been run against a live deployment.
+
+```powershell
+pip install -e ".[azure]"
+az login
+$env:CODEATLAS_LLM_PROVIDER            = "azure_openai"
+$env:CODEATLAS_AZURE_OPENAI_ENDPOINT   = "https://<resource>.openai.azure.com"
+$env:CODEATLAS_AZURE_OPENAI_DEPLOYMENT = "<deployment name>"   # replaces CODEATLAS_LLM_MODEL
+codeatlas doctor --llm                                         # ONE 1-token call; shows the auth used
+codeatlas ask "How does searching for owners by last name work?"
+```
+```bash
+pip install -e ".[azure]"
+az login
+export CODEATLAS_LLM_PROVIDER=azure_openai CODEATLAS_AZURE_OPENAI_DEPLOYMENT="<deployment name>"
+export CODEATLAS_AZURE_OPENAI_ENDPOINT="https://<resource>.openai.azure.com"
+codeatlas doctor --llm                                         # ONE 1-token call; shows the auth used
+codeatlas ask "How does searching for owners by last name work?"
+```
+
+Without Entra ID, set the `AZURE_OPENAI_API_KEY` environment variable instead. CodeAtlas reads it from the
+process environment, not from `.env`, and CodeAtlas uses it only when no Entra token can be obtained
+(`CODEATLAS_AZURE_OPENAI_AUTH=key` forces it). The API version defaults to `2024-10-21`
+(`CODEATLAS_AZURE_OPENAI_API_VERSION`). Prices are keyed by deployment:
+`{"azure_openai:<deployment name>": {...}}`. A prompt or answer blocked by Azure's content filter fails with
+the error kind `content_filter`, naming the filtered categories.
+
 ### Docker
 
 ```bash
@@ -283,7 +322,8 @@ REPO_PATH=./repos/spring-petclinic docker compose up --build      # API + UI on 
 curl -X POST localhost:8000/api/index -H 'content-type: application/json' -d '{}'
 ```
 
-To deploy to AWS (ECS Fargate behind CloudFront, Terraform), see [docs/deploy.md](docs/deploy.md).
+To deploy to AWS (ECS Fargate behind CloudFront, Terraform), see [docs/deploy.md](docs/deploy.md). To deploy
+to Azure (Container Apps with Azure OpenAI, Bicep), see [docs/deploy-azure.md](docs/deploy-azure.md).
 
 ## Documentation
 
@@ -294,6 +334,7 @@ To deploy to AWS (ECS Fargate behind CloudFront, Terraform), see [docs/deploy.md
 | [Configuration](docs/configuration.md) | Every `CODEATLAS_*` setting with its default (generated from the code) |
 | [HTTP API](docs/api.md) | Endpoints, authentication, server-sent events; [openapi.json](docs/openapi.json) |
 | [Deploy to AWS](docs/deploy.md) | ECS Fargate + CloudFront with Terraform, a demo session and its cost, teardown |
+| [Deploy to Azure](docs/deploy-azure.md) | Container Apps + Azure OpenAI (managed identity, Key Vault) with Bicep, a demo session and its cost, teardown |
 | [Troubleshooting](docs/troubleshooting.md) | Index lock, Windows paths, provider errors and what they mean |
 | [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md) | How to help, how to report a vulnerability, what changed |
 
@@ -534,12 +575,14 @@ setting. The most important ones:
 | `QDRANT_URL` | embedded | Set to a Qdrant server URL for the API/Docker setup |
 | `EMBEDDING_PROVIDER` / `EMBEDDING_MODEL` | `local` / `BAAI/bge-small-en-v1.5` | `openai`, `voyage` (e.g. `voyage-code-3`) or `hashing` (offline) |
 | `RERANKER_MODEL` | `Alibaba-NLP/gte-reranker-modernbert-base` | Used by `+rerank` modes; empty disables reranking. ~0.6 GB download, slow on CPU (~27 s/query) |
-| `LLM_PROVIDER` / `LLM_MODEL` | `anthropic` / – | `openai` (with `LLM_BASE_URL` for compatible servers) or `bedrock` |
+| `LLM_PROVIDER` / `LLM_MODEL` | `anthropic` / – | `openai` (with `LLM_BASE_URL` for compatible servers), `bedrock` or `azure_openai` (which uses the deployment name instead of `LLM_MODEL`) |
+| `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_DEPLOYMENT` | – / – | Azure OpenAI resource endpoint and deployment name |
+| `AZURE_OPENAI_API_VERSION` / `AZURE_OPENAI_AUTH` | `2024-10-21` / `auto` | `auto`: Entra ID (managed identity, `az login`) first, then the `AZURE_OPENAI_API_KEY` environment variable; `entra` or `key` force one |
 | `DEFAULT_MODE` / `DEFAULT_K` | `vector` / `5` | Any mode spec; `vector` is the frozen `fast` setup, `hybrid+rerank+graph` the `quality` one |
 | `MIN_VECTOR_SIMILARITY` | `0.30` | Refusal threshold without reranking |
 | `MIN_RERANK_CONFIDENCE` | `0.05` | Refusal threshold with reranking; tune with the unanswerable eval questions |
 | `MIN_CONFIDENCE_BY_MODEL` | bge-small `0.6177`, ModernBERT `0.868` | JSON per embedder or reranker model, overriding the two above; calibrate on dev with `codeatlas eval … --calibrate`. The code graph never raises confidence |
-| `LLM_PRICES` | none | JSON prices per `"<provider>:<model>"` (`input_per_mtok`, `output_per_mtok`); Bedrock and the Anthropic API are separate entries. Unlisted models report cost as `unpriced`, never $0. Eval reports sum answer and judge cost |
+| `LLM_PRICES` | none | JSON prices per `"<provider>:<model>"` (`input_per_mtok`, `output_per_mtok`); Bedrock and the Anthropic API are separate entries, and Azure OpenAI uses `"azure_openai:<deployment>"`. Unlisted models report cost as `unpriced`, never $0. Eval reports sum answer and judge cost |
 | `EMBEDDING_COST_PER_MTOK` | `0` | Price used for index-run embedding cost |
 
 ## Project layout
@@ -551,7 +594,7 @@ codeatlas/
   retrieval/   code tokenizer, BM25, cross-encoder reranker, query rewriter, hybrid retriever
   graph.py     call/dependency graph and impact analysis
   answer.py    prompting, citation validation, refusal
-  llm.py       Anthropic / OpenAI / Bedrock / offline providers, errors, prices
+  llm.py       Anthropic / OpenAI / Bedrock / Azure OpenAI / offline providers, errors, prices
   eval/        datasets, metrics, LLM judge, comparison runner, judged-run helpers
   api/         FastAPI app and GitHub webhook
   cli.py       `codeatlas` command;  demo.py: `codeatlas demo`;  doctor.py: `codeatlas doctor`
@@ -559,7 +602,7 @@ eval/          evaluation sets (PetClinic dev and held-out test splits)
 results/       committed evaluation reports behind the README numbers
 ui/            React chat client (Vite) with Vitest and Playwright tests
 docs/          architecture, evaluation, configuration, API, deployment, troubleshooting
-infra/         Terraform for ECS Fargate + CloudFront + Bedrock
+infra/         Terraform for AWS (ECS Fargate, CloudFront, Bedrock); Bicep for Azure (Container Apps, Azure OpenAI)
 scripts/       judged-run scripts, doc generators, demo GIF tooling
 tests/         pytest suite with a small Spring Boot fixture repository
 ```
@@ -593,7 +636,8 @@ the fixture repository in `tests/fixtures/shop`.
 ## Roadmap
 
 Open work, each item labelled *good first issue*, *help wanted* or *advanced*, is in
-[ROADMAP.md](ROADMAP.md). The main items: judged answer-quality runs on a real model, the four deferred
+[ROADMAP.md](ROADMAP.md). The main items: judged answer-quality runs on a real model, a live Azure deploy
+session, the four deferred
 retrieval fixes from the review, graph reports ordered by relevance, a faster quality setup, a
 cross-service (Feign) evaluation set and a larger evaluation set.
 

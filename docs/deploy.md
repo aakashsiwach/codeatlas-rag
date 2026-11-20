@@ -2,7 +2,8 @@
 
 `infra/terraform` runs the API and the web UI as one container on **ECS Fargate**, behind an Application
 Load Balancer, with **CloudFront** in front for HTTPS. Answers come from **Amazon Bedrock**. The image has
-the PetClinic index and both models baked in, so a task starts without downloading anything.
+the PetClinic index and both models baked in, so a task starts without downloading anything. For Azure
+(Container Apps with Azure OpenAI, Bicep), see [deploy-azure.md](deploy-azure.md).
 
 ```
 browser ──HTTPS──▶ CloudFront (*.cloudfront.net) ──HTTP──▶ ALB (CloudFront-only) ──▶ Fargate task :8000

@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **`confidence_after_demotion` ranking option** (default off; `-o confidence_after_demotion=on`). With
+  `rerank` on, the refusal confidence is normally read from the top reranked chunk before test code is
+  demoted, so it can describe a chunk that is no longer first. The option reports the score of the chunk
+  that is first in the final results instead. It does not touch the vector and bm25 confidence, and the
+  value is the same as before whenever neither test demotion nor the class-outline reorder changes which
+  chunk is first (for example with `demote_tests` off, or for a query about tests). The frozen 0.868
+  threshold and the README's numbers are unchanged; making the option the default is a separate change that needs a new held-out
+  split.
+
 ## [1.2.0] - 2026-11-20
 
 Azure support, mirroring the AWS work: an Azure OpenAI provider and infrastructure for Azure Container

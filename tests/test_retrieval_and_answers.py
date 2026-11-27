@@ -1,13 +1,23 @@
 import json
+import uuid
 
 import pytest
 from conftest import FakeLLM
+from qdrant_client import QdrantClient
 
 from codeatlas.answer import REFUSAL, count_uncited_sentences, extract_citations
 from codeatlas.atlas import CodeAtlas
 from codeatlas.embeddings import HashingEmbedder
 from codeatlas.models import Chunk, ScoredChunk
-from codeatlas.retrieval.retriever import TEST_INTENT, RetrievalConfig, _outlines_after_methods, _tests_last
+from codeatlas.retrieval.reranker import sigmoid
+from codeatlas.retrieval.retriever import (
+    TEST_INTENT,
+    RetrievalConfig,
+    Retriever,
+    _outlines_after_methods,
+    _tests_last,
+)
+from codeatlas.storage.vector_store import VectorStore
 
 
 def test_retrieval_config_parsing():
@@ -244,3 +254,119 @@ def test_answer_calls_send_the_configured_thinking(settings, repo):
     atlas.ask("Where is the payment retry logic?", mode="hybrid", k=5)
     list(atlas.ask_stream("Where is the payment retry logic?", mode="hybrid", k=5))
     assert llm.thinking == ["disabled", "disabled"]
+
+
+def _retriever_for(chunks: list[Chunk], score) -> Retriever:
+    """A retriever over `chunks` whose fake reranker gives each chunk the fixed rerank score `score(chunk)`."""
+
+    class Store:
+        def all_chunks(self):
+            return chunks
+
+    class FakeReranker:
+        def score(self, query, scored_chunks):
+            return [score(c) for c in scored_chunks]
+
+    embedder = HashingEmbedder()
+    vectors = VectorStore(QdrantClient(location=":memory:"), "confidence-after-demotion", embedder.dim)
+    vectors.upsert(chunks, embedder.embed_documents([c.embed_text for c in chunks]))
+    retriever = Retriever(Store(), vectors, embedder, reranker=FakeReranker())
+    retriever.refresh()
+    return retriever
+
+
+def _retriever_with_fake_reranker(test_score: float, main_score: float) -> Retriever:
+    """Two chunks that both match the query: a test file and a main file, with fixed rerank scores."""
+    text = "retry the payment charge with exponential backoff"
+
+    def chunk(name: str, path: str, extra: str = "") -> Chunk:
+        body = text + extra
+        return Chunk(str(uuid.uuid5(uuid.NAMESPACE_DNS, name)), path, "method", body, body, 1, 5, symbol=name)
+
+    chunks = [chunk("t", "src/test/java/PaymentServiceTest.java"), chunk("m", "src/main/java/PaymentService.java", " main")]
+    return _retriever_for(chunks, lambda c: test_score if "/test/" in c.path else main_score)
+
+
+def _retriever_with_outline(outline_score: float, method_score: float) -> Retriever:
+    """A class outline and one of its own methods (both main code) that both match the query."""
+    text = "find the owner and add a pet"
+    outline = Chunk(
+        str(uuid.uuid5(uuid.NAMESPACE_DNS, "outline")), "src/main/java/Owner.java", "class", text, text, 1, 9, symbol="x.Owner"
+    )
+    body = text + " addPet"
+    method = Chunk(
+        str(uuid.uuid5(uuid.NAMESPACE_DNS, "method")), "src/main/java/Owner.java", "method", body, body, 3, 6,
+        symbol="x.Owner#addPet",
+    )
+    return _retriever_for([outline, method], lambda c: outline_score if c.kind == "class" else method_score)
+
+
+def test_confidence_after_demotion_follows_the_final_top_chunk():
+    retriever = _retriever_with_fake_reranker(test_score=5.0, main_score=-5.0)
+    query = "how does the payment retry work"
+
+    legacy = retriever.retrieve(query, RetrievalConfig.parse("hybrid+rerank"))
+    assert legacy.chunks[0].chunk.path == "src/main/java/PaymentService.java"  # the test chunk was demoted
+    assert legacy.confidence == pytest.approx(sigmoid(5.0))  # but the confidence still describes it
+
+    fixed = retriever.retrieve(query, RetrievalConfig.parse("hybrid+rerank", confidence_after_demotion=True))
+    assert fixed.chunks[0].chunk.path == "src/main/java/PaymentService.java"
+    assert fixed.confidence == pytest.approx(sigmoid(-5.0))
+    assert fixed.confidence_source == "rerank"
+    assert [sc.chunk.id for sc in fixed.chunks] == [sc.chunk.id for sc in legacy.chunks]  # ranking unchanged
+
+
+def test_confidence_after_demotion_changes_nothing_when_nothing_is_demoted():
+    retriever = _retriever_with_fake_reranker(test_score=5.0, main_score=-5.0)
+    for query, overrides in (
+        ("how does the payment retry work", {"demote_tests": False}),
+        ("which tests cover the payment retry", {}),  # a query about tests keeps test code on top
+    ):
+        off = retriever.retrieve(query, RetrievalConfig.parse("hybrid+rerank", **overrides))
+        on = retriever.retrieve(
+            query, RetrievalConfig.parse("hybrid+rerank", confidence_after_demotion=True, **overrides)
+        )
+        assert on.chunks[0].chunk.path.startswith("src/test/")
+        assert on.confidence == pytest.approx(off.confidence) == pytest.approx(sigmoid(5.0))
+
+
+def test_confidence_after_demotion_only_touches_the_rerank_confidence():
+    retriever = _retriever_with_fake_reranker(test_score=5.0, main_score=-5.0)
+    off = retriever.retrieve("how does the payment retry work", RetrievalConfig.parse("hybrid"))
+    on = retriever.retrieve(
+        "how does the payment retry work", RetrievalConfig.parse("hybrid", confidence_after_demotion=True)
+    )
+    assert on.confidence == off.confidence and on.confidence_source == off.confidence_source != "rerank"
+
+
+def test_confidence_after_demotion_is_an_off_by_default_named_option():
+    assert RetrievalConfig().confidence_after_demotion is False
+    assert RetrievalConfig.parse("hybrid+rerank").name == "hybrid+rerank"  # off: the name is unchanged
+    opts = RetrievalConfig.parse_options(["confidence_after_demotion=on"])
+    assert opts == {"confidence_after_demotion": True}
+    assert RetrievalConfig.parse("hybrid+rerank", **opts).name == "hybrid+rerank[confidence_after_demotion=True]"
+
+
+def test_confidence_after_demotion_follows_the_chunk_the_outline_reorder_puts_first():
+    retriever = _retriever_with_outline(outline_score=5.0, method_score=3.0)  # the reranker prefers the outline
+    query = "how does an owner add a pet"
+
+    legacy = retriever.retrieve(query, RetrievalConfig.parse("hybrid+rerank"))
+    assert [sc.chunk.symbol for sc in legacy.chunks] == ["x.Owner#addPet", "x.Owner"]  # the outline moved below its method
+    assert legacy.confidence == pytest.approx(sigmoid(5.0))  # default off: still the outline's score
+
+    fixed = retriever.retrieve(query, RetrievalConfig.parse("hybrid+rerank", confidence_after_demotion=True))
+    assert [sc.chunk.symbol for sc in fixed.chunks] == ["x.Owner#addPet", "x.Owner"]  # ranking unchanged
+    assert fixed.confidence == pytest.approx(sigmoid(3.0))  # the final top chunk is the method
+    assert fixed.confidence_source == "rerank"
+
+
+def test_confidence_after_demotion_is_unchanged_when_no_outline_is_reordered():
+    retriever = _retriever_with_outline(outline_score=5.0, method_score=3.0)
+    for enabled in (False, True):
+        cfg = RetrievalConfig.parse(
+            "hybrid+rerank", outlines_after_methods=False, confidence_after_demotion=enabled
+        )
+        res = retriever.retrieve("how does an owner add a pet", cfg)
+        assert [sc.chunk.symbol for sc in res.chunks] == ["x.Owner", "x.Owner#addPet"]  # no reorder: outline stays first
+        assert res.confidence == pytest.approx(sigmoid(5.0))

@@ -22,7 +22,15 @@ RRF_K = 60
 MODES = ("vector", "bm25", "hybrid")
 FLAGS = ("rewrite", "rerank", "graph")
 # Ranking options that can be overridden per run (`codeatlas eval -o name=value`); shown in config names.
-OPTIONS = ("candidates", "rerank_pool", "graph_depth", "demote_tests", "outlines_after_methods", "graph_slots")
+OPTIONS = (
+    "candidates",
+    "rerank_pool",
+    "graph_depth",
+    "demote_tests",
+    "outlines_after_methods",
+    "graph_slots",
+    "confidence_after_demotion",
+)
 
 TEST_INTENT = re.compile(
     r"\b(tests?|testing|tested|test cases?|junit|mock(s|ed|ing|ito)?|asserts?|assertions?)\b", re.IGNORECASE
@@ -47,6 +55,8 @@ class RetrievalConfig:
     demote_tests: bool = True  # rank test code below main code unless the query is about tests
     outlines_after_methods: bool = True  # a class outline ranks below its own retrieved methods
     graph_slots: int = 2  # impact/caller queries: top-5 places reserved for graph neighbours (0 = legacy)
+    # rerank confidence from the final top chunk, after test demotion, instead of the pre-demotion top (off = legacy)
+    confidence_after_demotion: bool = False
 
     @staticmethod
     def parse_options(pairs: list[str]) -> dict[str, Any]:
@@ -204,6 +214,11 @@ class Retriever:
 
         if cfg.outlines_after_methods:
             scored = _outlines_after_methods(scored)
+
+        if cfg.confidence_after_demotion and cfg.rerank and scored:
+            # Demotion and the outline reorder can put a different chunk first than the one the rerank
+            # confidence above was read from; report the score of the chunk that is actually first.
+            confidence = sigmoid(scored[0].score)
 
         results = scored[: cfg.k]
         report = None
